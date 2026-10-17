@@ -8,6 +8,7 @@
 import os
 import sys
 import argparse
+import gc
 import json
 import time
 from pathlib import Path
@@ -84,12 +85,14 @@ DEFAULT_CONFIG = {
 
 def setup_logging(log_file: Optional[str] = None):
     """Configure le logging."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file) if log_file else logging.NullHandler()
+            logging.FileHandler(log_file, encoding="utf-8") if log_file else logging.NullHandler()
         ]
     )
     return logging.getLogger(__name__)
@@ -268,85 +271,156 @@ class OptimizedQuantizer:
         else:
             self.batcher = None
     
-    def quantize_model(
+    def _quantize_one_tensor(self, name: str, tensor: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        """Quantifie un seul tenseur et renvoie (tensor_quant, metadata_couche)."""
+        n_bits = self.dynamic_quant.get_optimal_bits() if self.dynamic_quant else self.config.get("n_bits", 8)
+        tensor_quant, layer_metadata = quantifier_tensor_canonique(
+            tensor,
+            n_bits=n_bits,
+            R=self.config.get("R_MAJEUR", 2.0),
+            r=self.config.get("R_MINEUR", 0.5),
+        )
+        layer_metadata["name"] = name
+
+        if self.memory_manager:
+            self.memory_manager.allocate(tensor_quant, name, priority=0)
+            if self.dynamic_quant and self.config.get("dynamic_quantization", True):
+                stats = self.memory_manager.get_stats()
+                self.dynamic_quant.adjust_bits(
+                    memory_pressure=stats.used_gb /
+                                   (self.memory_manager.max_vram_gb + self.memory_manager.max_ram_gb)
+                )
+
+        return tensor_quant, layer_metadata
+
+    def quantize_model_streaming(
         self,
-        state_dict: Dict[str, torch.Tensor],
+        input_dir: str,
         output_dir: str,
         validate: bool = True,
-    ) -> Tuple[Dict[str, torch.Tensor], Dict]:
+        num_validate_samples: int = 5,
+    ) -> Dict:
         """
-        Quantifie un modèle complet avec optimisation.
-        
-        Args:
-            state_dict: Dictionnaire d'état du modèle
-            output_dir: Répertoire de sortie
-            validate: Valider la quantification
-        
-        Returns:
-            Tuple de (state_dict quantifié, métadonnées)
+        Quantifie un modèle shard par shard, sans jamais charger l'intégralité
+        des poids en mémoire. Nécessaire pour les modèles dont la taille
+        (ex: Mixtral 8x7B, ~87GB en fp32) dépasse la RAM disponible.
         """
-        quant_state_dict = {}
+        from safetensors.torch import load_file as load_safetensors, save_file as save_safetensors
+
+        logger = self.logger
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        config_path = os.path.join(input_dir, "config.json")
+        if not os.path.exists(config_path):
+            logger.error(f"Fichier de configuration introuvable: {config_path}")
+            raise FileNotFoundError(config_path)
+        with open(config_path, "r") as f:
+            model_config = json.load(f)
+        with open(os.path.join(output_dir, "config.json"), "w") as f:
+            json.dump(model_config, f, indent=2)
+
+        index_path = os.path.join(input_dir, "model.safetensors.index.json")
+        single_path = os.path.join(input_dir, "model.safetensors")
+        bin_path = os.path.join(input_dir, "pytorch_model.bin")
+
+        if os.path.exists(index_path):
+            with open(index_path, "r") as f:
+                shard_files = sorted(set(json.load(f)["weight_map"].values()))
+        elif os.path.exists(single_path):
+            shard_files = ["model.safetensors"]
+        elif os.path.exists(bin_path):
+            shard_files = ["pytorch_model.bin"]
+        else:
+            logger.error(f"Aucun fichier de poids trouvé dans {input_dir}")
+            raise FileNotFoundError(index_path)
+
+        device = self.config.get("device", "cpu")
         metadata = {
             "hardware": self.hardware.to_dict(),
             "config": self.config,
             "layers": [],
         }
-        
-        # Créer le répertoire de sortie
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        
-        # Quantifier chaque couche
-        for name, tensor in tqdm(state_dict.items(), desc="Quantification"):
-            try:
-                # Déterminer le nombre de bits
-                if self.dynamic_quant:
-                    n_bits = self.dynamic_quant.get_optimal_bits()
-                else:
-                    n_bits = self.config.get("n_bits", 8)
-                
-                # Quantifier
-                tensor_quant, layer_metadata = quantifier_tensor_canonique(
-                    tensor,
-                    n_bits=n_bits,
-                    R=self.config.get("R_MAJEUR", 2.0),
-                    r=self.config.get("R_MINEUR", 0.5),
-                )
-                
-                # Gérer la mémoire
-                if self.memory_manager:
-                    self.memory_manager.allocate(
-                        tensor_quant,
-                        name,
-                        priority=0,
-                    )
-                
-                quant_state_dict[name] = tensor_quant
-                layer_metadata["name"] = name
-                metadata["layers"].append(layer_metadata)
-                
-                # Ajuster dynamiquement les bits
-                if self.dynamic_quant and self.config.get("dynamic_quantization", True):
-                    self.dynamic_quant.adjust_bits(
-                        memory_pressure=self.memory_manager.get_stats().used_gb / 
-                                       (self.memory_manager.max_vram_gb + self.memory_manager.max_ram_gb)
-                    )
-                
-            except Exception as e:
-                self.logger.error(f"Erreur de quantification pour {name}: {e}")
-                # Garder le tenseur original
-                quant_state_dict[name] = tensor
-        
-        # Sauvegarder les métadonnées
-        metadata_path = os.path.join(output_dir, "quantization_metadata.json")
-        with open(metadata_path, "w") as f:
+        output_weight_map: Dict[str, str] = {}
+        validation = {"total_tests": 0, "passed_tests": 0, "max_diff": 0.0, "mean_diff": 0.0, "details": []}
+        original_size_bytes = 0
+        quant_size_bytes = 0
+        samples_validated = 0
+
+        for shard_file in tqdm(shard_files, desc="Shards"):
+            shard_path = os.path.join(input_dir, shard_file)
+            if shard_file.endswith(".bin"):
+                shard_state = torch.load(shard_path, map_location=device)
+            else:
+                shard_state = load_safetensors(shard_path, device=device)
+
+            quant_shard = {}
+            for name, tensor in shard_state.items():
+                original_size_bytes += tensor.numel() * tensor.element_size()
+                try:
+                    tensor_quant, layer_metadata = self._quantize_one_tensor(name, tensor)
+                    metadata["layers"].append(layer_metadata)
+                    quant_shard[name] = tensor_quant.contiguous()
+                    quant_size_bytes += tensor_quant.numel() * tensor_quant.element_size()
+                except Exception as e:
+                    logger.error(f"Erreur de quantification pour {name}: {e}")
+                    quant_shard[name] = tensor.contiguous()
+                    quant_size_bytes += tensor.numel() * tensor.element_size()
+                    continue
+
+                if validate and samples_validated < num_validate_samples:
+                    try:
+                        dequant = déquantifier_tensor_canonique(tensor_quant, layer_metadata)
+                        diff = torch.abs(tensor.float() - dequant.float())
+                        max_diff = diff.max().item()
+                        mean_diff = diff.mean().item()
+                        del dequant, diff
+                    except Exception as e:
+                        logger.warning(f"Erreur de validation pour {name}: {e}")
+                        max_diff = mean_diff = float("inf")
+                    validation["details"].append({
+                        "layer": name, "max_diff": max_diff, "mean_diff": mean_diff,
+                        "passed": max_diff < 0.1,
+                    })
+                    validation["total_tests"] += 1
+                    validation["passed_tests"] += int(max_diff < 0.1)
+                    validation["max_diff"] = max(validation["max_diff"], max_diff)
+                    validation["mean_diff"] += mean_diff / num_validate_samples
+                    samples_validated += 1
+
+            out_shard_name = os.path.splitext(os.path.basename(shard_file))[0] + "_quant.safetensors"
+            save_safetensors(quant_shard, os.path.join(output_dir, out_shard_name))
+            for name in quant_shard:
+                output_weight_map[name] = out_shard_name
+
+            if self.memory_manager:
+                self.memory_manager.cleanup()
+            del shard_state, quant_shard
+            gc.collect()
+
+        with open(os.path.join(output_dir, "model_quant.safetensors.index.json"), "w") as f:
+            json.dump({"metadata": {"total_size": quant_size_bytes}, "weight_map": output_weight_map}, f, indent=2)
+
+        with open(os.path.join(output_dir, "quantization_metadata.json"), "w") as f:
             json.dump(metadata, f, indent=2)
-        
-        # Nettoyer la mémoire
-        if self.memory_manager:
-            self.memory_manager.cleanup()
-        
-        return quant_state_dict, metadata
-    
+
+        original_size_gb = original_size_bytes / (1024**3)
+        quant_size_gb = quant_size_bytes / (1024**3)
+        compression_report = self.get_compression_report(original_size_gb, quant_size_gb)
+        if validate and validation["total_tests"] > 0:
+            validation["validation_rate"] = validation["passed_tests"] / validation["total_tests"] * 100
+        else:
+            validation["validation_rate"] = 0.0
+
+        report = {"compression": compression_report, "validation": validation if validate else {}}
+        with open(os.path.join(output_dir, "compression_report.json"), "w") as f:
+            json.dump(report, f, indent=2)
+
+        logger.info(
+            f"✅ Quantification terminée: {original_size_gb:.2f}GB -> {quant_size_gb:.2f}GB "
+            f"(ratio {compression_report['compression_ratio']:.2f}x)"
+        )
+        return report
+
     def get_compression_report(self, original_size_gb: float, quant_size_gb: float) -> Dict:
         """Génère un rapport de compression."""
         ratio = original_size_gb / quant_size_gb if quant_size_gb > 0 else 1.0
@@ -359,117 +433,6 @@ class OptimizedQuantizer:
             "space_saved_percent": ((original_size_gb - quant_size_gb) / original_size_gb) * 100,
         }
 
-
-# ============================================================================
-# CHARGEMENT ET SAUVEGARDE DES MODÈLES
-# ============================================================================
-
-def charger_modèle(input_dir: str, device: str = "cuda") -> Tuple[Dict[str, torch.Tensor], Dict]:
-    """Charge un modèle depuis un répertoire."""
-    logger = logging.getLogger(__name__)
-    logger.info(f"Chargement du modèle depuis {input_dir}...")
-    
-    config_path = os.path.join(input_dir, "config.json")
-    if not os.path.exists(config_path):
-        logger.error(f"Fichier de configuration introuvable: {config_path}")
-        raise FileNotFoundError(config_path)
-    
-    with open(config_path, "r") as f:
-        config = json.load(f)
-    
-    weights_path = os.path.join(input_dir, "pytorch_model.bin")
-    if not os.path.exists(weights_path):
-        logger.error(f"Fichier de poids introuvable: {weights_path}")
-        raise FileNotFoundError(weights_path)
-    
-    logger.info(f"Chargement de {weights_path}...")
-    state_dict = torch.load(weights_path, map_location=device)
-    
-    logger.info(f"✅ Modèle chargé: {len(state_dict)} poids")
-    return state_dict, config
-
-
-def sauvegarder_modèle_quantifié(
-    state_dict_quant: Dict[str, torch.Tensor],
-    metadata: Dict,
-    output_dir: str,
-) -> None:
-    """Sauvegarde un modèle quantifié."""
-    logger = logging.getLogger(__name__)
-    logger.info(f"Sauvegarde du modèle quantifié dans {output_dir}...")
-    
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Sauvegarder la configuration
-    config_path = os.path.join(output_dir, "config_quant.json")
-    with open(config_path, "w") as f:
-        json.dump(metadata, f, indent=2)
-    
-    # Sauvegarder les poids quantifiés
-    weights_path = os.path.join(output_dir, "pytorch_model_quant.bin")
-    torch.save(state_dict_quant, weights_path)
-    
-    logger.info(f"✅ Modèle quantifié sauvegardé: {len(state_dict_quant)} poids")
-
-
-# ============================================================================
-# VALIDATION
-# ============================================================================
-
-def valider_quantisation(
-    state_dict_original: Dict[str, torch.Tensor],
-    state_dict_quant: Dict[str, torch.Tensor],
-    metadata: Dict,
-    num_tests: int = 5,
-) -> Dict:
-    """Valide la quantification en comparant les sorties."""
-    logger = logging.getLogger(__name__)
-    logger.info("Validation de la quantification...")
-    
-    results = {
-        "total_tests": 0,
-        "passed_tests": 0,
-        "max_diff": 0.0,
-        "mean_diff": 0.0,
-        "details": [],
-    }
-    
-    # Tester quelques couches
-    test_layers = list(state_dict_original.keys())[:num_tests]
-    
-    for layer_name in test_layers:
-        original = state_dict_original[layer_name]
-        quant = state_dict_quant[layer_name]
-        
-        try:
-            # Déquantifier
-            dequant = déquantifier_tensor_canonique(quant, metadata["layers"][0])
-            
-            # Comparer
-            diff = torch.abs(original - dequant)
-            max_diff = diff.max().item()
-            mean_diff = diff.mean().item()
-            
-            results["details"].append({
-                "layer": layer_name,
-                "max_diff": max_diff,
-                "mean_diff": mean_diff,
-                "passed": max_diff < 0.1,  # Seuil arbitraire
-            })
-            
-            results["total_tests"] += 1
-            if max_diff < 0.1:
-                results["passed_tests"] += 1
-            
-            results["max_diff"] = max(results["max_diff"], max_diff)
-            results["mean_diff"] += mean_diff / num_tests
-        
-        except Exception as e:
-            logger.warning(f"Erreur de validation pour {layer_name}: {e}")
-    
-    results["validation_rate"] = (results["passed_tests"] / results["total_tests"] * 100) if results["total_tests"] > 0 else 0
-    
-    return results
 
 
 # ============================================================================
@@ -556,77 +519,40 @@ def main():
     hardware = HardwareDetector.detect()
     HardwareDetector.print_summary(hardware)
     
-    # Charger le modèle
-    state_dict, model_config = charger_modèle(args.input, config["device"])
-    
-    # Calculer la taille originale
-    original_size = sum(
-        tensor.numel() * tensor.element_size()
-        for tensor in state_dict.values()
-    ) / (1024**3)
-    logger.info(f"Taille originale du modèle: {original_size:.2f} GB")
-    
     # Initialiser le quantiseur optimisé
     quantizer = OptimizedQuantizer(config)
-    
-    # Quantifier le modèle
+
+    # Quantifier le modèle en streaming (shard par shard, RAM bornée)
     start_time = time.time()
-    quant_state_dict, metadata = quantizer.quantize_model(
-        state_dict,
+    report = quantizer.quantize_model_streaming(
+        args.input,
         args.output,
         validate=args.validate,
     )
     quant_time = time.time() - start_time
-    
-    # Calculer la taille quantifiée
-    quant_size = sum(
-        tensor.numel() * tensor.element_size()
-        for tensor in quant_state_dict.values()
-    ) / (1024**3)
-    
-    # Générer le rapport de compression
-    compression_report = quantizer.get_compression_report(original_size, quant_size)
-    
-    # Sauvegarder le modèle quantifié
-    sauvegarder_modèle_quantifié(quant_state_dict, metadata, args.output)
-    
-    # Valider si demandé
-    if args.validate:
-        validation_results = valider_quantisation(
-            state_dict,
-            quant_state_dict,
-            metadata,
-            num_tests=5,
-        )
-        logger.info(f"Validation: {validation_results['validation_rate']:.1f}% de succès")
-    else:
-        validation_results = {}
-    
-    # Sauvegarder le rapport de compression
-    report_path = os.path.join(args.output, "compression_report.json")
-    with open(report_path, "w") as f:
-        json.dump({
-            "compression": compression_report,
-            "quantization_time": quant_time,
-            "validation": validation_results,
-            "hardware": hardware.to_dict(),
-            "config": config,
-        }, f, indent=2)
-    
+
+    compression_report = report["compression"]
+    validation_results = report["validation"]
+    report["quantization_time"] = quant_time
+    report["hardware"] = hardware.to_dict()
+    report["config"] = config
+    with open(os.path.join(args.output, "compression_report.json"), "w") as f:
+        json.dump(report, f, indent=2)
+
     # Afficher le résumé
     logger.info("=" * 80)
     logger.info("RÉSULTATS DE LA QUANTISATION")
     logger.info("=" * 80)
-    logger.info(f"Taille originale: {original_size:.2f} GB")
-    logger.info(f"Taille quantifiée: {quant_size:.2f} GB")
+    logger.info(f"Taille originale: {compression_report['original_size_gb']:.2f} GB")
+    logger.info(f"Taille quantifiée: {compression_report['quantized_size_gb']:.2f} GB")
     logger.info(f"Ratio de compression: {compression_report['compression_ratio']:.1f}x")
     logger.info(f"Espace économisé: {compression_report['space_saved_gb']:.2f} GB")
     logger.info(f"Temps de quantification: {quant_time:.2f} secondes")
-    
+
     if validation_results:
         logger.info(f"Validation: {validation_results['validation_rate']:.1f}% de succès")
         logger.info(f"Différence maximale: {validation_results['max_diff']:.6f}")
-    
+
     logger.info("=" * 80)
     logger.info("✅ Quantisation terminée avec succès!")
     logger.info(f"Modèle quantifié sauvegardé dans: {args.output}")
