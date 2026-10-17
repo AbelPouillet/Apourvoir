@@ -31,6 +31,7 @@ class ParallelStrategy(Enum):
     CUDA_STREAMS = "cuda_streams" # CUDA streams (GPU parallelism)
     MULTI_GPU = "multi_gpu"     # Multi-GPU parallelism
     HYBRID = "hybrid"           # Hybrid approach
+    AUTO = "auto"               # Automatic selection
 
 
 @dataclass
@@ -120,7 +121,7 @@ class ParallelExperts(nn.Module):
         self,
         experts: List[nn.Module],
         hardware: HardwareSpecs,
-        strategy: ParallelStrategy = ParallelStrategy.AUTO,
+        strategy: ParallelStrategy = None,
         max_parallel: Optional[int] = None,
         memory_manager: Optional[MemoryManager] = None,
     ):
@@ -141,7 +142,7 @@ class ParallelExperts(nn.Module):
         self.memory_manager = memory_manager
         
         # Determine optimal strategy
-        if strategy == ParallelStrategy.AUTO:
+        if strategy is None:
             self.strategy = self._determine_strategy()
         else:
             self.strategy = strategy
@@ -476,7 +477,7 @@ class MoEWrapper(nn.Module):
         self,
         moe_model: nn.Module,
         hardware: HardwareSpecs,
-        strategy: ParallelStrategy = ParallelStrategy.AUTO,
+        strategy: Optional[ParallelStrategy] = None,
         **kwargs,
     ):
         """

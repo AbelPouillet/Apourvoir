@@ -18,6 +18,14 @@ import torch
 import numpy as np
 from tqdm import tqdm
 
+# Fix Python path to find apourvoir package
+import sys
+import os
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(script_dir)
+if project_dir not in sys.path:
+    sys.path.insert(0, project_dir)
+
 # Import Apourvoir SDK
 try:
     from apourvoir.optimizer import (
