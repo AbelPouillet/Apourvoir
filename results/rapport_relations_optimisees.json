@@ -1,0 +1,458 @@
+{
+  "date": "2026-10-17T13:58:56.924580",
+  "tokens": {},
+  "relations": [
+    {
+      "token1": "pouvoir",
+      "token2": "lumière",
+      "distance": 1.4142135623730951,
+      "angle": 0.0,
+      "score": 0.2431167344342142,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "voir",
+      "distance": 0.8947477741652696,
+      "angle": 0.0,
+      "score": 0.4087106730319585,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "savoir",
+      "distance": 0.21493817348329242,
+      "angle": 0.0,
+      "score": 0.8065913073666948,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "comprendre",
+      "distance": 1.7960985850515936,
+      "angle": 0.0,
+      "score": 0.165945047423032,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "appliquer",
+      "distance": 0.48316093452251474,
+      "angle": 0.0,
+      "score": 0.6168305460557858,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "volonté",
+      "distance": 0.39549050695232824,
+      "angle": 0.0,
+      "score": 0.6733496755354441,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "capacité",
+      "distance": 0.09743808933419953,
+      "angle": 0.0,
+      "score": 0.9071585026041826,
+      "type": "SYNONYMIE"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "impuissance",
+      "distance": 1.6514935613126414,
+      "angle": 0.0,
+      "score": 0.19176328440584284,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "connaître",
+      "distance": 0.3088874794558516,
+      "angle": 0.0,
+      "score": 0.734263385093869,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "pouvoir",
+      "token2": "agir",
+      "distance": 1.2087797557414615,
+      "angle": 0.0,
+      "score": 0.2985613750456378,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "voir",
+      "distance": 2.1026181048752646,
+      "angle": 0.0,
+      "score": 0.12213624380229225,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "savoir",
+      "distance": 1.207650382241784,
+      "angle": 0.0,
+      "score": 0.29889875282754474,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "comprendre",
+      "distance": 2.121998696892654,
+      "angle": 0.0,
+      "score": 0.11979196125941168,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "appliquer",
+      "distance": 1.7563788481817586,
+      "angle": 0.0,
+      "score": 0.1726689937471028,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "volonté",
+      "distance": 1.3770909623608132,
+      "angle": 0.0,
+      "score": 0.252311470064537,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "capacité",
+      "distance": 1.4175662995415599,
+      "angle": 0.0,
+      "score": 0.24230299281554796,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "impuissance",
+      "distance": 2.1745810400819505,
+      "angle": 0.0,
+      "score": 0.11365576090558063,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "connaître",
+      "distance": 1.2857321476437384,
+      "angle": 0.0,
+      "score": 0.27644810868884917,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "lumière",
+      "token2": "agir",
+      "distance": 2.138989066070619,
+      "angle": 0.0,
+      "score": 0.1177738444356946,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "savoir",
+      "distance": 1.0565319535075772,
+      "angle": 0.0,
+      "score": 0.42946047697446915,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "comprendre",
+      "distance": 1.7113725915295077,
+      "angle": 0.0,
+      "score": 0.2543362488092056,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "appliquer",
+      "distance": 0.41219717954647345,
+      "angle": 0.0,
+      "score": 0.7190979183785872,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "volonté",
+      "distance": 0.9118339389743332,
+      "angle": 0.0,
+      "score": 0.4821658431530249,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "capacité",
+      "distance": 0.8483764026140931,
+      "angle": 0.0,
+      "score": 0.5072754535229105,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "impuissance",
+      "distance": 1.4131606547300823,
+      "angle": 0.0,
+      "score": 0.3228625707728754,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "connaître",
+      "distance": 0.9323857127856197,
+      "angle": 0.0,
+      "score": 0.4743031663757601,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "voir",
+      "token2": "agir",
+      "distance": 0.6736412373063047,
+      "angle": 0.0,
+      "score": 0.5833820500519518,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "comprendre",
+      "distance": 1.7510426956998215,
+      "angle": 0.0,
+      "score": 0.24639134923584405,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "appliquer",
+      "distance": 0.6486456327480353,
+      "angle": 0.0,
+      "score": 0.5951650563962172,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "volonté",
+      "distance": 0.37083713474093677,
+      "angle": 0.0,
+      "score": 0.7432894745437586,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "capacité",
+      "distance": 0.22695709141721546,
+      "angle": 0.0,
+      "score": 0.8339634745101917,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "impuissance",
+      "distance": 1.644043920077823,
+      "angle": 0.0,
+      "score": 0.26841120266530505,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "connaître",
+      "distance": 0.2479029577225972,
+      "angle": 0.0,
+      "score": 0.8201054362654828,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "savoir",
+      "token2": "agir",
+      "distance": 1.2878635860363907,
+      "angle": 0.0,
+      "score": 0.3569031334733065,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "appliquer",
+      "distance": 1.6769710809443503,
+      "angle": 0.0,
+      "score": 0.36561198852602633,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "volonté",
+      "distance": 1.408460914516866,
+      "angle": 0.0,
+      "score": 0.42952447740755334,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "capacité",
+      "distance": 1.7006329033364413,
+      "angle": 0.0,
+      "score": 0.3604580331249581,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "impuissance",
+      "distance": 0.36682322030622205,
+      "angle": 0.0,
+      "score": 0.8024434191596022,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "connaître",
+      "distance": 1.5147008021532462,
+      "angle": 0.0,
+      "score": 0.4029992890052603,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "comprendre",
+      "token2": "agir",
+      "distance": 1.0986323698219465,
+      "angle": 0.0,
+      "score": 0.5172756254393934,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "appliquer",
+      "token2": "volonté",
+      "distance": 0.5564204203917211,
+      "angle": 0.0,
+      "score": 0.7161595853890268,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "appliquer",
+      "token2": "capacité",
+      "distance": 0.4375912095385965,
+      "angle": 0.0,
+      "score": 0.7690842745237898,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "appliquer",
+      "token2": "impuissance",
+      "distance": 1.4452603403427569,
+      "angle": 0.0,
+      "score": 0.4201446575755739,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "appliquer",
+      "token2": "connaître",
+      "distance": 0.5516699261605768,
+      "angle": 0.0,
+      "score": 0.718203764450719,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "appliquer",
+      "token2": "agir",
+      "distance": 0.8350918286774438,
+      "angle": 0.0,
+      "score": 0.6058910483933289,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "volonté",
+      "token2": "capacité",
+      "distance": 0.3066580556888574,
+      "angle": 0.0,
+      "score": 0.7359021954584334,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "volonté",
+      "token2": "impuissance",
+      "distance": 1.2906296740946432,
+      "angle": 0.0,
+      "score": 0.2750975067681592,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "volonté",
+      "token2": "connaître",
+      "distance": 0.14245885224485383,
+      "angle": 0.0,
+      "score": 0.8672232378475488,
+      "type": "SYNONYMIE"
+    },
+    {
+      "token1": "volonté",
+      "token2": "agir",
+      "distance": 0.9796348505490301,
+      "angle": 0.0,
+      "score": 0.3754481685170216,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "capacité",
+      "token2": "impuissance",
+      "distance": 1.5540554812434497,
+      "angle": 0.0,
+      "score": 0.2884468655129387,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "capacité",
+      "token2": "connaître",
+      "distance": 0.23135739464531643,
+      "angle": 0.0,
+      "score": 0.831032881999612,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "capacité",
+      "token2": "agir",
+      "distance": 1.1216204456047354,
+      "angle": 0.0,
+      "score": 0.40767036645384425,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "impuissance",
+      "token2": "connaître",
+      "distance": 1.3971822133192318,
+      "angle": 0.0,
+      "score": 0.3270161337374412,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "impuissance",
+      "token2": "agir",
+      "distance": 0.7648368047656359,
+      "angle": 0.0,
+      "score": 0.5423360540196994,
+      "type": "LIEN_FORT"
+    },
+    {
+      "token1": "connaître",
+      "token2": "agir",
+      "distance": 1.0631693499679709,
+      "angle": 0.0,
+      "score": 0.4271861210792052,
+      "type": "LIEN_FORT"
+    }
+  ],
+  "statistiques": {
+    "distance_moyenne": 1.0659728145096925,
+    "distance_min": 0.09743808933419953,
+    "distance_max": 2.1745810400819505,
+    "angle_moyen": 0.0,
+    "score_moyen": 0.4651735856192954,
+    "nombre_relations": 55,
+    "par_type": {
+      "LIEN_FORT": 53,
+      "SYNONYMIE": 2
+    }
+  }
+}

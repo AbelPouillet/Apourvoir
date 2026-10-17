@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-17T13:58:56.925757",
+  "tokens": [
+    "pouvoir",
+    "lumière",
+    "voir",
+    "savoir",
+    "comprendre",
+    "appliquer",
+    "volonté",
+    "capacité",
+    "impuissance",
+    "connaître",
+    "agir"
+  ],
+  "n_bits_list": [
+    4,
+    8,
+    12,
+    16
+  ],
+  "résultats": [
+    {
+      "n_bits": 4,
+      "n_bits_moyen_utilisé": 6,
+      "erreur_moyenne": 0.2424653613435143,
+      "taille_moyenne_octets": 1.2727272727272727,
+      "ratio_compression": 18.857142857142858,
+      "erreur_maximale": 0.7321143001743708
+    },
+    {
+      "n_bits": 8,
+      "n_bits_moyen_utilisé": 6,
+      "erreur_moyenne": 0.2424653613435143,
+      "taille_moyenne_octets": 1.2727272727272727,
+      "ratio_compression": 18.857142857142858,
+      "erreur_maximale": 0.7321143001743708
+    },
+    {
+      "n_bits": 12,
+      "n_bits_moyen_utilisé": 6,
+      "erreur_moyenne": 0.2424653613435143,
+      "taille_moyenne_octets": 1.2727272727272727,
+      "ratio_compression": 18.857142857142858,
+      "erreur_maximale": 0.7321143001743708
+    },
+    {
+      "n_bits": 16,
+      "n_bits_moyen_utilisé": 6,
+      "erreur_moyenne": 0.2424653613435143,
+      "taille_moyenne_octets": 1.2727272727272727,
+      "ratio_compression": 18.857142857142858,
+      "erreur_maximale": 0.7321143001743708
+    }
+  ]
+}
