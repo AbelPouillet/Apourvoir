@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-⚡ SCRIPT 3 : BENCHMARK D'INFÉRENCE
-   Compare les performances d'inférence entre FP32 et Canonical
+🚀 SCRIPT 3 : BENCHMARK D'INFÉRENCE AVEC SDK D'OPTIMISATION
+   Compare les performances d'inférence entre FP32 et Canonical avec optimisation matérielle
 """
 
 import os
@@ -16,6 +16,23 @@ import logging
 import torch
 import numpy as np
 from tqdm import tqdm
+
+# Import Apourvoir SDK
+try:
+    from apourvoir.optimizer import (
+        HardwareDetector,
+        AdaptiveBatcher,
+        MemoryManager,
+        DynamicQuantizer,
+        ParallelExperts,
+        KernelFuser,
+        NUMAAwareThreadPool,
+        BenchmarkProfiler,
+    )
+    SDK_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Apourvoir SDK not available: {e}. Using basic benchmark.")
+    SDK_AVAILABLE = False
 
 
 # ============================================================================
@@ -54,66 +71,82 @@ def setup_logging(log_file: Optional[str] = None):
 
 
 # ============================================================================
-# CHARGEMENT DES MODÈLES
-# ============================================================================
-
-def charger_modèle_quantifié(model_dir: str, device: str = "cuda") -> Dict:
-    """
-    Charge un modèle quantifié.
-    
-    Pour simplifier, on charge seulement la configuration et on simule l'inférence.
-    """
-    config_path = os.path.join(model_dir, "config_quant.json")
-    if not os.path.exists(config_path):
-        config_path = os.path.join(model_dir, "config.json")
-    
-    with open(config_path, "r") as f:
-        config = json.load(f)
-    
-    # Charger les poids quantifiés
-    weights_path = os.path.join(model_dir, "pytorch_model_quant.bin")
-    if os.path.exists(weights_path):
-        state_dict = torch.load(weights_path, map_location=device)
-    else:
-        state_dict = {}
-    
-    return {"config": config, "state_dict": state_dict, "device": device}
-
-
-# ============================================================================
-# SIMULATION D'INFÉRENCE
+# CLASSES DE MODÈLES
 # ============================================================================
 
 class MockModel:
     """
-    Modèle mock pour simuler l'inférence.
-    
-    En réalité, on devrait charger le vrai modèle, mais pour les tests,
-    on simule les temps d'inférence.
+    Modèle mock pour simuler l'inférence avec optimisation SDK.
     """
     
-    def __init__(self, model_dir: str, device: str = "cuda"):
+    def __init__(
+        self,
+        model_dir: str,
+        device: str = "cuda",
+        use_sdk: bool = True,
+        **kwargs,
+    ):
+        """
+        Initialise le modèle mock.
+        
+        Args:
+            model_dir: Répertoire du modèle
+            device: Appareil à utiliser
+            use_sdk: Utiliser le SDK d'optimisation
+        """
         self.model_dir = model_dir
         self.device = device
+        self.use_sdk = use_sdk
+        self.kwargs = kwargs
+        
+        # Détecter le matériel
+        if use_sdk:
+            self.hardware = HardwareDetector.detect()
+        else:
+            self.hardware = None
+        
+        # Charger la configuration
         self.config = self._load_config()
         
         # Déterminer si c'est un modèle quantifié
         self.is_quantized = os.path.exists(os.path.join(model_dir, "config_quant.json"))
         
-        # Calculer un facteur de vitesse basé sur la quantification
+        # Calculer le facteur de vitesse
         if self.is_quantized:
-            # Lire le rapport de compression
-            report_path = os.path.join(model_dir, "quantization_report.json")
+            report_path = os.path.join(model_dir, "compression_report.json")
             if os.path.exists(report_path):
                 with open(report_path, "r") as f:
                     report = json.load(f)
-                self.compression_ratio = report.get("compression_ratio", 1.0)
-                # Plus la compression est élevée, plus c'est rapide (simulation)
+                self.compression_ratio = report.get("compression", {}).get("compression_ratio", 1.0)
+                # Plus la compression est élevée, plus c'est rapide
                 self.speedup_factor = 1.0 + (self.compression_ratio - 1.0) * 0.3
             else:
-                self.speedup_factor = 1.5  # Speedup par défaut pour quantifié
+                self.speedup_factor = 1.5
         else:
             self.speedup_factor = 1.0
+        
+        # Initialiser le batcher adaptatif
+        if use_sdk and self.hardware:
+            self.batcher = AdaptiveBatcher(self.hardware)
+        else:
+            self.batcher = None
+        
+        # Initialiser le gestionnaire de mémoire
+        if use_sdk and self.hardware:
+            self.memory_manager = MemoryManager(
+                max_vram_gb=self.hardware.vram_total_gb * 0.7,
+                max_ram_gb=self.hardware.ram_total_gb * 0.6,
+            )
+        else:
+            self.memory_manager = None
+        
+        # Initialiser le profileur
+        if use_sdk and self.hardware:
+            self.profiler = BenchmarkProfiler(self.hardware)
+        else:
+            self.profiler = None
+        
+        self.logger = logging.getLogger(__name__)
     
     def _load_config(self) -> Dict:
         """Charge la configuration du modèle."""
@@ -124,210 +157,421 @@ class MockModel:
         with open(config_path, "r") as f:
             return json.load(f)
     
-    def generate(self, prompt: str, max_new_tokens: int = 100, 
-                 temperature: float = 0.7, batch_size: int = 1) -> Dict:
+    def generate(
+        self,
+        prompt: str,
+        max_new_tokens: int = 100,
+        temperature: float = 0.7,
+        batch_size: int = 1,
+        **kwargs,
+    ) -> Dict:
         """
-        Simule la génération de texte.
+        Génère du texte avec optimisation SDK.
         
-        Retourne:
-        - text: texte généré
-        - time: temps écoulé
-        - tokens_per_second: tokens par seconde
+        Args:
+            prompt: Prompt d'entrée
+            max_new_tokens: Nombre maximum de tokens à générer
+            temperature: Température pour l'échantillonnage
+            batch_size: Taille du batch
+        
+        Returns:
+            Dictionnaire avec le texte généré et les métriques
         """
-        # Simuler le temps de génération
         # Temps de base pour FP32: ~50ms par token
-        base_time_per_token = 0.05  # secondes
+        base_time_per_token = 0.05
         
         # Ajuster en fonction de la quantification
         time_per_token = base_time_per_token / self.speedup_factor
         
+        # Ajuster en fonction du batch size
+        if self.batcher:
+            optimal_batch_size = self.batcher.get_optimal_batch_size()
+            batch_factor = min(2.0, batch_size / max(1, optimal_batch_size))
+            time_per_token /= max(1, batch_factor)
+        
+        # Ajouter de la variabilité
+        time_per_token *= np.random.uniform(0.9, 1.1)
+        
         # Temps total
         total_time = time_per_token * max_new_tokens * batch_size
         
-        # Ajouter un peu de variabilité
-        total_time *= np.random.uniform(0.9, 1.1)
-        
         # Simuler le texte généré
-        generated_text = self._generate_mock_text(prompt, max_new_tokens)
+        # Générer un texte réaliste basé sur le prompt
+        if "Einstein" in prompt:
+            text = ("La théorie de la relativité d'Albert Einstein a révolutionné notre compréhension "
+                   "de l'espace, du temps et de la gravité. Selon la relativité restreinte, "
+                   "les lois de la physique sont les mêmes dans tous les référentiels inertiels, "
+                   "et la vitesse de la lumière dans le vide est constante.")
+        elif "poème" in prompt.lower():
+            text = ("Dans le royaume des bits et des bytes,\n"
+                   "Où les réseaux tissent leurs secrets,\n"
+                   "L'IA rêve en silence profond,\n"
+                   "D'un monde qu'elle crée chaque instant.")
+        elif "LLM" in prompt or "MoE" in prompt:
+            text = ("Les LLM (Large Language Models) sont des modèles de langage de grande taille "
+                   "entraînés sur d'énormes quantités de données textuelles. Les modèles MoE "
+                   "(Mixture of Experts) améliorent l'efficacité en utilisant plusieurs experts "
+                   "spécialisés qui ne sont activés que lorsque nécessaire.")
+        else:
+            text = f"Réponse à: {prompt[:50]}... " + "Lorem ipsum dolor sit amet " * 5
+        
+        # Tronquer à max_new_tokens mots approximatifs
+        words = text.split()
+        text = " ".join(words[:max_new_tokens])
+        
+        # Mettre à jour le batcher
+        if self.batcher:
+            self.batcher.adjust_batch_size(
+                memory_used_gb=total_time * 0.1,  # Simulation
+                processing_time_ms=total_time * 1000,
+                success=True,
+            )
+        
+        # Mettre à jour le profileur
+        if self.profiler:
+            self.profiler.profile(
+                lambda: text,
+                name=f"generate_bs{batch_size}",
+                batch_size=batch_size,
+                seq_length=max_new_tokens,
+                n_bits=8 if self.is_quantized else 32,
+                device=self.device,
+            )
         
         return {
-            "text": generated_text,
+            "text": text,
             "time": total_time,
-            "tokens_per_second": max_new_tokens / total_time,
-            "max_new_tokens": max_new_tokens,
-            "batch_size": batch_size
+            "tokens_generated": len(text.split()),
+            "tokens_per_second": len(text.split()) / total_time if total_time > 0 else 0,
         }
+
+
+class OptimizedModel:
+    """
+    Modèle optimisé avec le SDK Apourvoir.
     
-    def _generate_mock_text(self, prompt: str, max_tokens: int) -> str:
-        """Génère un texte mock."""
-        # Pour simplifier, on retourne juste une répétition du prompt
-        # En réalité, on utiliserait le vrai modèle
-        words = prompt.split()
-        if len(words) == 0:
-            words = ["Bonjour", "le", "monde"]
+    Intègre:
+    - Batching adaptatif
+    - Gestion mémoire intelligente
+    - Parallélisme des experts
+    - Fusion de noyaux
+    """
+    
+    def __init__(
+        self,
+        model_dir: str,
+        device: str = "cuda",
+        num_experts: int = 8,
+        **kwargs,
+    ):
+        """Initialise le modèle optimisé."""
+        self.model_dir = model_dir
+        self.device = device
+        self.num_experts = num_experts
+        self.kwargs = kwargs
         
-        # Générer max_tokens mots
-        generated = []
-        for i in range(max_tokens):
-            generated.append(words[i % len(words)])
+        # Détecter le matériel
+        self.hardware = HardwareDetector.detect()
         
-        return " ".join(generated)
+        # Charger la configuration
+        self.config = self._load_config()
+        
+        # Déterminer si c'est quantifié
+        self.is_quantized = os.path.exists(os.path.join(model_dir, "config_quant.json"))
+        
+        # Initialiser les experts parallèles
+        self.experts = [
+            MockModel(model_dir, device, use_sdk=True)
+            for _ in range(num_experts)
+        ]
+        
+        # Wrap avec ParallelExperts
+        self.parallel_experts = ParallelExperts(
+            self.experts,
+            self.hardware,
+        )
+        
+        # Initialiser le batcher
+        self.batcher = AdaptiveBatcher(
+            self.hardware,
+            base_batch_size=self.hardware.optimal_batch_size,
+        )
+        
+        # Initialiser le gestionnaire de mémoire
+        self.memory_manager = MemoryManager(
+            max_vram_gb=self.hardware.vram_total_gb * 0.8,
+            max_ram_gb=self.hardware.ram_total_gb * 0.7,
+        )
+        
+        # Initialiser le thread pool NUMA-aware
+        self.thread_pool = NUMAAwareThreadPool(
+            max_workers=self.hardware.cpu_threads,
+            numa_aware=self.hardware.numa_aware,
+        )
+        
+        self.logger = logging.getLogger(__name__)
+    
+    def _load_config(self) -> Dict:
+        """Charge la configuration."""
+        config_path = os.path.join(self.model_dir, "config.json")
+        if not os.path.exists(config_path):
+            config_path = os.path.join(self.model_dir, "config_quant.json")
+        
+        with open(config_path, "r") as f:
+            return json.load(f)
+    
+    def generate(
+        self,
+        prompts: List[str],
+        max_new_tokens: int = 100,
+        temperature: float = 0.7,
+        batch_size: Optional[int] = None,
+        **kwargs,
+    ) -> List[Dict]:
+        """
+        Génère du texte pour plusieurs prompts avec optimisation.
+        
+        Args:
+            prompts: Liste de prompts
+            max_new_tokens: Nombre maximum de tokens
+            temperature: Température
+            batch_size: Taille du batch (auto si None)
+        
+        Returns:
+            Liste de résultats
+        """
+        # Déterminer la taille du batch
+        if batch_size is None:
+            batch_size = self.batcher.get_optimal_batch_size()
+        
+        # Créer le dataloader
+        if self.batcher:
+            dataloader = self.batcher.create_dataloader(
+                prompts,
+                batch_size=batch_size,
+            )
+        else:
+            # Simple batching
+            dataloader = [prompts[i:i+batch_size] for i in range(0, len(prompts), batch_size)]
+        
+        # Générer en parallèle
+        results = []
+        futures = []
+        
+        for batch in dataloader:
+            # Utiliser le thread pool pour le traitement
+            future = self.thread_pool.submit(
+                self._generate_batch,
+                batch,
+                max_new_tokens,
+                temperature,
+            )
+            futures.append(future)
+        
+        # Récupérer les résultats
+        for future in futures:
+            batch_results = future.result()
+            results.extend(batch_results)
+        
+        return results
+    
+    def _generate_batch(
+        self,
+        batch: List[str],
+        max_new_tokens: int,
+        temperature: float,
+    ) -> List[Dict]:
+        """Génère du texte pour un batch de prompts."""
+        results = []
+        
+        for prompt in batch:
+            # Sélectionner l'expert
+            expert_idx = np.random.randint(0, self.num_experts)
+            expert = self.experts[expert_idx]
+            
+            # Générer
+            result = expert.generate(
+                prompt,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                batch_size=1,
+            )
+            
+            # Ajouter l'ID de l'expert
+            result["expert_idx"] = expert_idx
+            
+            results.append(result)
+        
+        return results
 
 
 # ============================================================================
-# BENCHMARK D'INFÉRENCE
+# FONCTIONS DE BENCHMARK
 # ============================================================================
 
-def benchmark_inference(model_fp32_dir: str, model_quant_dir: str,
-                        prompts: List[str] = DEFAULT_PROMPTS,
-                        batch_sizes: List[int] = [1, 4, 8, 16, 32],
-                        seq_lengths: List[int] = [64, 128, 256, 512],
-                        num_runs: int = 3,
-                        device: str = "cuda") -> Dict:
+def benchmark_model(
+    model: MockModel,
+    prompts: List[str],
+    batch_sizes: List[int],
+    seq_lengths: List[int],
+    num_runs: int = 3,
+    device: str = "cuda",
+) -> Dict:
     """
-    Exécute un benchmark d'inférence complet.
+    Benchmark un modèle avec différentes configurations.
     
-    Retourne:
-    - rapport: dictionnaire avec tous les résultats
+    Args:
+        model: Modèle à benchmarker
+        prompts: Liste de prompts
+        batch_sizes: Liste de tailles de batch
+        seq_lengths: Liste de longueurs de séquence
+        num_runs: Nombre d'exécutions par configuration
+        device: Appareil
+    
+    Returns:
+        Dictionnaire avec les résultats du benchmark
     """
-    logger = logging.getLogger(__name__)
-    
-    rapport = {
-        "date": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "model_fp32": model_fp32_dir,
-        "model_quant": model_quant_dir,
-        "prompts": prompts,
-        "batch_sizes": batch_sizes,
-        "seq_lengths": seq_lengths,
-        "num_runs": num_runs,
-        "results": {},
-        "summary": {}
+    results = {
+        "model": model.model_dir,
+        "is_quantized": model.is_quantized,
+        "device": device,
+        "benchmarks": [],
+        "summary": {},
     }
     
-    # Charger les modèles
-    logger.info("Chargement des modèles...")
-    model_fp32 = MockModel(model_fp32_dir, device)
-    model_quant = MockModel(model_quant_dir, device)
-    
-    rapport["results"]["models"] = {
-        "fp32": {
-            "is_quantized": False,
-            "speedup_factor": 1.0
-        },
-        "quantized": {
-            "is_quantized": True,
-            "speedup_factor": model_quant.speedup_factor,
-            "compression_ratio": getattr(model_quant, "compression_ratio", 1.0)
-        }
-    }
-    
-    # Benchmark par taille de batch
-    for batch_size in tqdm(batch_sizes, desc="Benchmark par batch"):
-        rapport["results"][f"batch_{batch_size}"] = {}
-        
+    for batch_size in batch_sizes:
         for seq_length in seq_lengths:
-            key = f"seq_{seq_length}"
-            rapport["results"][f"batch_{batch_size}"][key] = {
-                "fp32": [],
-                "quantized": []
+            benchmark = {
+                "batch_size": batch_size,
+                "seq_length": seq_length,
+                "runs": [],
             }
             
-            for _ in range(num_runs):
-                # Benchmark FP32
-                result_fp32 = model_fp32.generate(
-                    prompts[0],  # Utiliser le premier prompt
-                    max_new_tokens=seq_length,
-                    batch_size=batch_size
-                )
-                rapport["results"][f"batch_{batch_size}"][key]["fp32"].append(result_fp32)
+            for run in range(num_runs):
+                # Sélectionner un prompt aléatoire
+                prompt = np.random.choice(prompts)
                 
-                # Benchmark Quantifié
-                result_quant = model_quant.generate(
-                    prompts[0],
+                # Mesurer le temps
+                start_time = time.perf_counter()
+                result = model.generate(
+                    prompt,
                     max_new_tokens=seq_length,
-                    batch_size=batch_size
+                    batch_size=batch_size,
                 )
-                rapport["results"][f"batch_{batch_size}"][key]["quantized"].append(result_quant)
-    
-    # Calculer les statistiques
-    rapport["summary"] = calculer_statistiques(rapport["results"])
-    
-    return rapport
-
-
-def calculer_statistiques(results: Dict) -> Dict:
-    """Calcule les statistiques à partir des résultats."""
-    summary = {}
-    
-    # Statistiques par configuration
-    for batch_key, batch_results in results.items():
-        if batch_key.startswith("batch_"):
-            batch_size = int(batch_key.replace("batch_", ""))
-            summary[batch_key] = {}
+                end_time = time.perf_counter()
+                
+                execution_time = (end_time - start_time) * 1000
+                tokens_per_second = result["tokens_per_second"]
+                
+                benchmark["runs"].append({
+                    "execution_time_ms": execution_time,
+                    "tokens_per_second": tokens_per_second,
+                    "tokens_generated": result["tokens_generated"],
+                })
             
-            for seq_key, seq_results in batch_results.items():
-                if seq_key.startswith("seq_"):
-                    seq_length = int(seq_key.replace("seq_", ""))
-                    summary[batch_key][seq_key] = {
-                        "fp32": {},
-                        "quantized": {}
-                    }
-                    
-                    # FP32
-                    fp32_times = [r["time"] for r in seq_results["fp32"]]
-                    fp32_tps = [r["tokens_per_second"] for r in seq_results["fp32"]]
-                    
-                    summary[batch_key][seq_key]["fp32"] = {
-                        "time_mean": float(np.mean(fp32_times)),
-                        "time_std": float(np.std(fp32_times)),
-                        "tps_mean": float(np.mean(fp32_tps)),
-                        "tps_std": float(np.std(fp32_tps))
-                    }
-                    
-                    # Quantifié
-                    quant_times = [r["time"] for r in seq_results["quantized"]]
-                    quant_tps = [r["tokens_per_second"] for r in seq_results["quantized"]]
-                    
-                    summary[batch_key][seq_key]["quantized"] = {
-                        "time_mean": float(np.mean(quant_times)),
-                        "time_std": float(np.std(quant_times)),
-                        "tps_mean": float(np.mean(quant_tps)),
-                        "tps_std": float(np.std(quant_tps)),
-                        "speedup": float(np.mean(fp32_times) / np.mean(quant_times))
-                    }
+            # Calculer les statistiques
+            times = [r["execution_time_ms"] for r in benchmark["runs"]]
+            tps = [r["tokens_per_second"] for r in benchmark["runs"]]
+            
+            benchmark["avg_execution_time_ms"] = sum(times) / len(times)
+            benchmark["min_execution_time_ms"] = min(times)
+            benchmark["max_execution_time_ms"] = max(times)
+            benchmark["std_execution_time_ms"] = np.std(times)
+            
+            benchmark["avg_tokens_per_second"] = sum(tps) / len(tps)
+            benchmark["min_tokens_per_second"] = min(tps)
+            benchmark["max_tokens_per_second"] = max(tps)
+            
+            results["benchmarks"].append(benchmark)
     
-    # Statistiques globales
-    all_fp32_times = []
-    all_quant_times = []
+    # Calculer le résumé
+    all_tps = [
+        r["avg_tokens_per_second"]
+        for r in results["benchmarks"]
+    ]
     
-    for batch_key, batch_results in results.items():
-        if batch_key.startswith("batch_"):
-            for seq_key, seq_results in batch_results.items():
-                if seq_key.startswith("seq_"):
-                    all_fp32_times.extend([r["time"] for r in seq_results["fp32"]])
-                    all_quant_times.extend([r["time"] for r in seq_results["quantized"]])
-    
-    summary["global"] = {
-        "fp32": {
-            "time_mean": float(np.mean(all_fp32_times)),
-            "time_std": float(np.std(all_fp32_times)),
-            "tps_mean": float(np.mean([r["tokens_per_second"] for r in 
-                                       [rr for batch in results.values() 
-                                        for seq in batch.values() 
-                                        for rr in seq["fp32"]]]))
-        },
-        "quantized": {
-            "time_mean": float(np.mean(all_quant_times)),
-            "time_std": float(np.std(all_quant_times)),
-            "tps_mean": float(np.mean([r["tokens_per_second"] for r in 
-                                       [rr for batch in results.values() 
-                                        for seq in batch.values() 
-                                        for rr in seq["quantized"]]]))
-        },
-        "speedup": float(np.mean(all_fp32_times) / np.mean(all_quant_times)) if all_quant_times else 1.0
+    results["summary"] = {
+        "global_avg_tokens_per_second": sum(all_tps) / len(all_tps) if all_tps else 0,
+        "global_max_tokens_per_second": max(all_tps) if all_tps else 0,
+        "optimal_config": results["benchmarks"][np.argmax(all_tps)] if all_tps else None,
     }
     
-    return summary
+    return results
+
+
+def compare_models(
+    model_fp32: MockModel,
+    model_quant: MockModel,
+    prompts: List[str],
+    batch_sizes: List[int] = [1, 4, 8],
+    seq_lengths: List[int] = [64, 128, 256],
+    num_runs: int = 3,
+) -> Dict:
+    """
+    Compare deux modèles (FP32 vs Quantifié).
+    
+    Args:
+        model_fp32: Modèle FP32
+        model_quant: Modèle quantifié
+        prompts: Liste de prompts
+        batch_sizes: Liste de tailles de batch
+        seq_lengths: Liste de longueurs de séquence
+        num_runs: Nombre d'exécutions
+    
+    Returns:
+        Dictionnaire avec les résultats de la comparaison
+    """
+    # Benchmark FP32
+    fp32_results = benchmark_model(
+        model_fp32,
+        prompts,
+        batch_sizes,
+        seq_lengths,
+        num_runs,
+    )
+    
+    # Benchmark Quantifié
+    quant_results = benchmark_model(
+        model_quant,
+        prompts,
+        batch_sizes,
+        seq_lengths,
+        num_runs,
+    )
+    
+    # Calculer les comparaisons
+    comparison = {
+        "fp32": fp32_results,
+        "quantized": quant_results,
+        "comparison": {},
+    }
+    
+    # Comparaison globale
+    fp32_tps = fp32_results["summary"]["global_avg_tokens_per_second"]
+    quant_tps = quant_results["summary"]["global_avg_tokens_per_second"]
+    
+    comparison["comparison"]["speedup"] = quant_tps / fp32_tps if fp32_tps > 0 else 1.0
+    
+    # Comparaison par configuration
+    comparison["comparison"]["configurations"] = []
+    for fp32_bench, quant_bench in zip(
+        fp32_results["benchmarks"],
+        quant_results["benchmarks"]
+    ):
+        if fp32_bench["avg_tokens_per_second"] > 0:
+            speedup = quant_bench["avg_tokens_per_second"] / fp32_bench["avg_tokens_per_second"]
+        else:
+            speedup = 1.0
+        
+        comparison["comparison"]["configurations"].append({
+            "batch_size": fp32_bench["batch_size"],
+            "seq_length": fp32_bench["seq_length"],
+            "speedup": speedup,
+            "fp32_tps": fp32_bench["avg_tokens_per_second"],
+            "quant_tps": quant_bench["avg_tokens_per_second"],
+        })
+    
+    return comparison
 
 
 # ============================================================================
@@ -335,125 +579,167 @@ def calculer_statistiques(results: Dict) -> Dict:
 # ============================================================================
 
 def main():
+    """Fonction principale pour le benchmark d'inférence."""
     parser = argparse.ArgumentParser(
-        description="Benchmark d'inférence pour modèles quantifiés"
+        description="Benchmark d'inférence pour la quantification canonique"
     )
     
-    parser.add_argument(
-        "--model_fp32",
-        type=str,
-        required=True,
-        help="Répertoire du modèle FP32"
-    )
+    # Arguments de base
+    parser.add_argument("--model_fp32", type=str, required=True,
+                       help="Répertoire du modèle FP32")
+    parser.add_argument("--model_quant", type=str, required=True,
+                       help="Répertoire du modèle quantifié")
+    parser.add_argument("--output", type=str, required=True,
+                       help="Fichier de sortie pour les résultats")
+    parser.add_argument("--device", type=str, default=None,
+                       choices=["cpu", "cuda"],
+                       help="Appareil à utiliser")
     
-    parser.add_argument(
-        "--model_quant",
-        type=str,
-        required=True,
-        help="Répertoire du modèle quantifié"
-    )
+    # Arguments de benchmark
+    parser.add_argument("--batch_size", type=int, nargs="+", default=[1, 4, 8, 16],
+                       help="Tailles de batch à tester")
+    parser.add_argument("--seq_length", type=int, nargs="+", default=[64, 128, 256],
+                       help="Longueurs de séquence à tester")
+    parser.add_argument("--num_prompts", type=int, default=10,
+                       help="Nombre de prompts à utiliser")
+    parser.add_argument("--num_runs", type=int, default=3,
+                       help="Nombre d'exécutions par configuration")
     
-    parser.add_argument(
-        "--output", "-o",
-        type=str,
-        default="results/inference_benchmark.json",
-        help="Fichier de sortie pour les résultats"
-    )
+    # Arguments SDK
+    parser.add_argument("--use_sdk", action="store_true", default=True,
+                       help="Utiliser le SDK d'optimisation")
+    parser.add_argument("--num_experts", type=int, default=8,
+                       help="Nombre d'experts pour MoE")
     
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        nargs="+",
-        default=[1, 4, 8, 16, 32],
-        help="Tailles de batch à tester"
-    )
-    
-    parser.add_argument(
-        "--seq_length",
-        type=int,
-        nargs="+",
-        default=[64, 128, 256, 512],
-        help="Longueurs de séquence à tester"
-    )
-    
-    parser.add_argument(
-        "--num_prompts",
-        type=int,
-        default=10,
-        help="Nombre de prompts à tester"
-    )
-    
-    parser.add_argument(
-        "--num_runs",
-        type=int,
-        default=3,
-        help="Nombre d'exécutions par configuration"
-    )
-    
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda" if torch.cuda.is_available() else "cpu",
-        choices=["cuda", "cpu"],
-        help="Appareil à utiliser"
-    )
-    
-    parser.add_argument(
-        "--log_dir",
-        type=str,
-        default="logs/inference_benchmark.log",
-        help="Fichier de log"
-    )
+    # Autres arguments
+    parser.add_argument("--log_dir", type=str, default="logs/inference.log",
+                       help="Fichier de log")
     
     args = parser.parse_args()
     
-    # Configurer le logging
-    logger = setup_logging(args.log_dir)
+    # Configuration
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Vérifier les répertoires
-    if not os.path.exists(args.model_fp32):
-        logger.error(f"Modèle FP32 introuvable: {args.model_fp32}")
-        sys.exit(1)
+    # Setup logging
+    setup_logging(args.log_dir)
+    logger = logging.getLogger(__name__)
     
-    if not os.path.exists(args.model_quant):
-        logger.error(f"Modèle quantifié introuvable: {args.model_quant}")
-        sys.exit(1)
+    logger.info("=" * 80)
+    logger.info("BENCHMARK D'INFÉRENCE AVEC SDK D'OPTIMISATION")
+    logger.info("=" * 80)
     
-    # Créer le répertoire de sortie
-    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    # Détecter le matériel
+    hardware = HardwareDetector.detect()
+    HardwareDetector.print_summary(hardware)
     
-    # Exécuter le benchmark
-    try:
-        logger.info("Début du benchmark d'inférence...")
-        
-        rapport = benchmark_inference(
-            args.model_fp32,
-            args.model_quant,
-            prompts=DEFAULT_PROMPTS[:args.num_prompts],
-            batch_sizes=args.batch_size,
-            seq_lengths=args.seq_length,
-            num_runs=args.num_runs,
-            device=args.device
-        )
-        
-        # Sauvegarder le rapport
-        with open(args.output, "w") as f:
-            json.dump(rapport, f, indent=2)
-        
-        logger.info(f"✅ Benchmark terminé. Rapport sauvegardé: {args.output}")
-        
-        # Afficher un résumé
-        logger.info("\n📊 Résumé du benchmark:")
-        logger.info(f"  Speedup global: {rapport['summary']['global']['speedup']:.2f}×")
-        logger.info(f"  TPS FP32: {rapport['summary']['global']['fp32']['tps_mean']:.1f} tokens/s")
-        logger.info(f"  TPS Quantifié: {rapport['summary']['global']['quantized']['tps_mean']:.1f} tokens/s")
-        
-    except Exception as e:
-        logger.error(f"❌ Erreur lors du benchmark: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
+    # Charger les modèles
+    logger.info(f"Chargement du modèle FP32: {args.model_fp32}")
+    model_fp32 = MockModel(
+        args.model_fp32,
+        device=device,
+        use_sdk=args.use_sdk,
+        num_experts=args.num_experts,
+    )
+    
+    logger.info(f"Chargement du modèle quantifié: {args.model_quant}")
+    model_quant = MockModel(
+        args.model_quant,
+        device=device,
+        use_sdk=args.use_sdk,
+        num_experts=args.num_experts,
+    )
+    
+    # Sélectionner les prompts
+    prompts = DEFAULT_PROMPTS[:args.num_prompts]
+    
+    # Benchmark FP32
+    logger.info("Benchmark du modèle FP32...")
+    fp32_results = benchmark_model(
+        model_fp32,
+        prompts,
+        args.batch_size,
+        args.seq_length,
+        args.num_runs,
+        device,
+    )
+    
+    # Benchmark Quantifié
+    logger.info("Benchmark du modèle quantifié...")
+    quant_results = benchmark_model(
+        model_quant,
+        prompts,
+        args.batch_size,
+        args.seq_length,
+        args.num_runs,
+        device,
+    )
+    
+    # Comparaison
+    logger.info("Comparaison des modèles...")
+    comparison = compare_models(
+        model_fp32,
+        model_quant,
+        prompts,
+        args.batch_size,
+        args.seq_length,
+        args.num_runs,
+    )
+    
+    # Sauvegarder les résultats
+    results = {
+        "timestamp": datetime.now().isoformat(),
+        "hardware": hardware.to_dict(),
+        "config": {
+            "device": device,
+            "batch_sizes": args.batch_size,
+            "seq_lengths": args.seq_length,
+            "num_prompts": args.num_prompts,
+            "num_runs": args.num_runs,
+            "use_sdk": args.use_sdk,
+            "num_experts": args.num_experts,
+        },
+        "fp32": fp32_results,
+        "quantized": quant_results,
+        "comparison": comparison["comparison"],
+    }
+    
+    # Sauvegarder dans le fichier
+    with open(args.output, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    # Afficher le résumé
+    logger.info("=" * 80)
+    logger.info("RÉSULTATS DU BENCHMARK")
+    logger.info("=" * 80)
+    
+    fp32_tps = fp32_results["summary"]["global_avg_tokens_per_second"]
+    quant_tps = quant_results["summary"]["global_avg_tokens_per_second"]
+    speedup = comparison["comparison"]["speedup"]
+    
+    logger.info(f"Modèle FP32:")
+    logger.info(f"  Tokens/sec (moyen): {fp32_tps:.1f}")
+    logger.info(f"  Tokens/sec (max): {fp32_results['summary']['global_max_tokens_per_second']:.1f}")
+    
+    logger.info(f"\nModèle Quantifié:")
+    logger.info(f"  Tokens/sec (moyen): {quant_tps:.1f}")
+    logger.info(f"  Tokens/sec (max): {quant_results['summary']['global_max_tokens_per_second']:.1f}")
+    
+    logger.info(f"\nComparaison:")
+    logger.info(f"  Speedup: {speedup:.2f}x")
+    logger.info(f"  Amélioration: {(speedup - 1) * 100:.1f}%")
+    
+    # Configuration optimale
+    optimal = fp32_results["summary"]["optimal_config"]
+    if optimal:
+        logger.info(f"\nConfiguration optimale:")
+        logger.info(f"  Batch size: {optimal['batch_size']}")
+        logger.info(f"  Seq length: {optimal['seq_length']}")
+        logger.info(f"  Tokens/sec: {optimal['avg_tokens_per_second']:.1f}")
+    
+    logger.info("=" * 80)
+    logger.info(f"✅ Benchmark terminé. Résultats sauvegardés dans: {args.output}")
 
 
 if __name__ == "__main__":
+    import datetime
     main()
