@@ -166,7 +166,7 @@ Chaque script affiche la commande exécutée et écrit ses résultats détaillé
 - **Couches concentriques** (`CanonicalQuantizer`, couches 1 à 4 avec 8/6/4/4 bits) : simple politique de bits, sans bénéfice mesuré.
 - **Relations « de Thalès »** : `ThalesTriangle` et `validate_thales` mesurent seulement si un angle vaut 90°. **Aucune propriété sémantique n'est démontrée.**
 - **SDK `apourvoir/optimizer`** (tiers matériels, presets, batching adaptatif, parallélisme d'experts) : **[NON MESURÉ]**. `adaptive_batching.py` contient encore une démo avec des valeurs `np.random` ; les tableaux de tiers et presets sont des heuristiques non validées.
-- **Lanceur et API** (`scripts/launcher/launch.py`) : le serveur API, l'interface web et le moteur d'inférence sont des **stubs** qui se contentent de journaliser. Il n'existe **pas** d'endpoint `/v1/completions` fonctionnel ni de compatibilité vérifiée avec des agents de codage.
+- **Lanceur et API** (`scripts/launcher/launch.py`) : le lanceur démarre un vrai serveur HTTP, avec `/health`, `/status` et `/v1/models` sur `--api-port`, et une page de statut sur `--ui-port`. Il reste actif jusqu'à Ctrl+C. En revanche, **il n'y a pas de moteur d'inférence** : `/v1/completions` et `/v1/chat/completions` répondent `501 Not Implemented`. La compatibilité avec des agents de codage n'a pas été vérifiée.
 - **Documents historiques** (`MAIL_POUR_MISTRAL_AI.md`, `RECETTE_QUANTISATION_MOE_CANONIQUE.md`, `README_APOURVOIR.md`, `results/*.json|png` d'avant octobre 2026) : ils contiennent les anciennes affirmations non mesurées et sont signalés comme tels.
 - `src/` est un module historique indépendant (alignement savoir/pouvoir) ; ses tests passent, mais il n'est pas utilisé par la quantisation.
 

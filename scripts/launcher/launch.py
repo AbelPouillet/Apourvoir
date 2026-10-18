@@ -298,17 +298,19 @@ def main():
         logger.info(f"Configuration saved to {args.save_config}")
         return
     
-    # Launch
+    # Launch and keep the servers running until Ctrl+C
     try:
-        launcher.launch()
+        launcher.launch(block=True)
     except KeyboardInterrupt:
         logger.info("Received interrupt signal, stopping...")
-        launcher.stop()
     except Exception as e:
         logger.error(f"Error during launch: {e}")
         import traceback
         traceback.print_exc()
+        launcher.stop()
         sys.exit(1)
+    finally:
+        launcher.stop()
 
 
 if __name__ == "__main__":

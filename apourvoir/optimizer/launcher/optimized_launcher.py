@@ -27,6 +27,7 @@ from pathlib import Path
 
 from .hardware_profile import HardwareProfile, HardwareTier
 from .launch_config import LaunchConfig, OptimizationPreset
+from .server import APIHandler, BackgroundServer, UIHandler
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,10 @@ class OptimizedLauncher:
         
         # Running state
         self._running: bool = False
-        
+
+        # HTTP servers started by launch()
+        self.servers: List[BackgroundServer] = []
+
         # Initialize
         self._initialize()
     
@@ -304,16 +308,19 @@ class OptimizedLauncher:
         
         return self.config.get_recommendations()
     
-    def launch(self) -> None:
+    def launch(self, block: bool = False) -> None:
         """
         Launch Apourvoir with optimized configuration.
-        
+
         This is the main entry point that:
         1. Validates resources
         2. Adjusts configuration for the model
         3. Starts the inference engine
         4. Starts the API server (if enabled)
         5. Starts the web UI (if enabled)
+
+        Args:
+            block: If True, keep running (servers stay up) until stop() or Ctrl+C.
         """
         logger.info("Launching Apourvoir with optimized configuration...")
         
@@ -349,7 +356,22 @@ class OptimizedLauncher:
             self._launch_web_ui()
         
         logger.info("Apourvoir launched successfully")
-    
+
+        if block and self.servers:
+            self.wait()
+
+    def wait(self, poll_seconds: float = 0.5) -> None:
+        """Block until stop() is called; Ctrl+C stops the servers cleanly."""
+        if self.servers:
+            logger.info("Servers running: " + ", ".join(s.address for s in self.servers) + " (Ctrl+C to stop)")
+        try:
+            while self._running:
+                time.sleep(poll_seconds)
+        except KeyboardInterrupt:
+            logger.info("Received interrupt signal, stopping...")
+        finally:
+            self.stop()
+
     def _degrade_config(self) -> None:
         """Degrade configuration to fit available resources."""
         if not self.profile or not self.config:
@@ -447,26 +469,26 @@ class OptimizedLauncher:
     def _launch_api_server(self) -> None:
         """Launch the API server."""
         logger.info(f"Launching API server on {self.options.api_host}:{self.options.api_port}")
-        
-        # This would start a FastAPI or similar server
-        # For now, we'll just log the action
-        
-        # In a real implementation, this would be:
-        # from apourvoir.serve import api
-        # api.start(host=self.options.api_host, port=self.options.api_port)
-    
+        server = BackgroundServer("API server", APIHandler, self.options.api_host, self.options.api_port,
+                                  self.get_status, model_name=self.options.model)
+        server.start()
+        self.servers.append(server)
+
     def _launch_web_ui(self) -> None:
-        """Launch the web UI."""
+        """Launch the web UI (status page)."""
         logger.info(f"Launching web UI on {self.options.api_host}:{self.options.ui_port}")
-        
-        # This would start a web interface
-        # For now, we'll just log the action
-    
+        server = BackgroundServer("Web UI", UIHandler, self.options.api_host, self.options.ui_port, self.get_status)
+        server.start()
+        self.servers.append(server)
+
     def stop(self) -> None:
         """Stop all running components."""
+        if not self._running and not self.servers:
+            return
         logger.info("Stopping Apourvoir...")
         self._running = False
-        # In a real implementation, this would stop all servers and clean up
+        while self.servers:
+            self.servers.pop().stop()
     
     def monitor_performance(self) -> PerformanceMetrics:
         """
