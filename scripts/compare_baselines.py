@@ -324,6 +324,8 @@ def main() -> int:
     parser.add_argument("--ctx", type=int, default=512)
     parser.add_argument("--threads", type=int, default=max(1, (os.cpu_count() or 2) // 2))
     parser.add_argument("--output", default=None)
+    parser.add_argument("--resume", action="store_true",
+                        help="Reprendre : ne pas recalculer les méthodes déjà présentes dans le fichier de sortie")
     args = parser.parse_args()
 
     command = "python " + " ".join(shlex.quote(a) for a in sys.argv)
@@ -344,6 +346,17 @@ def main() -> int:
         "weights": {},
         "not_measured": {},
     }
+    output = args.output or os.path.join("results", f"compare_{tag}.json")
+    Path(output).parent.mkdir(parents=True, exist_ok=True)
+    if args.resume and os.path.exists(output):
+        with open(output, encoding="utf-8") as f:
+            report["weights"] = json.load(f).get("weights", {})
+
+    def save() -> None:
+        # Sauvegarde après chaque méthode : une erreur tardive ne perd pas les mesures déjà faites.
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+
     log("=" * 78)
     log(f"Commande : {command}")
     log(f"Modèle   : {args.model} ({len(files)} fichiers safetensors)")
@@ -351,11 +364,15 @@ def main() -> int:
 
     # ---- 1. Poids : méthodes PyTorch
     for method in torch_methods:
+        if method in report["weights"]:
+            log(f"\n[poids] {method} : déjà mesuré (--resume)")
+            continue
         log(f"\n[poids] {method}")
         t0 = time.perf_counter()
         s = measure_model(args.model, method).summary()
         s["seconds"] = time.perf_counter() - t0
         report["weights"][method] = s
+        save()
         log(f"  ratio vs FP32 {s['ratio_vs_fp32']:.3f}x | cos {s['weighted_cosine']:.6f} | err {s['weighted_rel_error']:.5f}")
 
     # ---- 1b. Poids : GGUF llama.cpp
@@ -370,6 +387,9 @@ def main() -> int:
             log(f"\n[gguf] llama.cpp {report['llama_cpp_version']}")
             ref = tools.convert_bf16(model_dir, tag)
             for q in gguf_types:
+                if f"gguf:{q}" in report["weights"]:
+                    log(f"[poids] gguf:{q} : déjà mesuré (--resume)")
+                    continue
                 log(f"[poids] gguf:{q}")
                 t0 = time.perf_counter()
                 path = tools.quantize(ref, tag, q, args.threads)
@@ -382,6 +402,7 @@ def main() -> int:
                 s["reproduce"] = [f"python convert_hf_to_gguf.py {model_dir} --outtype bf16 --outfile {ref}",
                                   f"llama-quantize {ref} {path} {q}"]
                 report["weights"][f"gguf:{q}"] = s
+                save()
                 log(f"  ratio vs FP32 {s['ratio_vs_fp32']:.3f}x | cos {s['weighted_cosine']:.6f} | err {s['weighted_rel_error']:.5f}")
 
     # ---- AWQ
@@ -423,10 +444,7 @@ def main() -> int:
     for name, why in report["not_measured"].items():
         log(f"{name:<16} [NON MESURÉ] {why}")
 
-    output = args.output or os.path.join("results", f"compare_{tag}.json")
-    Path(output).parent.mkdir(parents=True, exist_ok=True)
-    with open(output, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False)
+    save()
     log(f"\nRésultats complets : {output}")
     return 0
 

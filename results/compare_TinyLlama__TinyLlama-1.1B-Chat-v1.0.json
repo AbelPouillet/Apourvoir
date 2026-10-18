@@ -24,9 +24,9 @@
       "weighted_cosine": 0.9999708770591379,
       "min_cosine": 0.9999644028942293,
       "max_rel_error": 0.008437607493028887,
-      "quant_seconds": 19.536656800020864,
-      "dequant_seconds": 10.4420214999991,
-      "seconds": 40.098573999999644
+      "quant_seconds": 16.784163999996963,
+      "dequant_seconds": 7.985474400033127,
+      "seconds": 33.09764759999962
     },
     "canonical4": {
       "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -44,9 +44,9 @@
       "weighted_cosine": 0.9921748695140566,
       "min_cosine": 0.9911224692756586,
       "max_rel_error": 0.13373244479425425,
-      "quant_seconds": 16.166302599973278,
-      "dequant_seconds": 9.787884100016527,
-      "seconds": 33.975749900000665
+      "quant_seconds": 14.284738499991363,
+      "dequant_seconds": 7.90559029992437,
+      "seconds": 29.24660039999435
     },
     "int8_per_row": {
       "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -64,9 +64,9 @@
       "weighted_cosine": 0.9999520650242062,
       "min_cosine": 0.9995589257579585,
       "max_rel_error": 0.029707454349099736,
-      "quant_seconds": 4.315444299998489,
-      "dequant_seconds": 1.502657300021383,
-      "seconds": 14.124953199996526
+      "quant_seconds": 4.0839477999688825,
+      "dequant_seconds": 1.3251069999751053,
+      "seconds": 11.9196135999955
     },
     "q8_0_ref": {
       "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -84,9 +84,9 @@
       "weighted_cosine": 0.9999849721419037,
       "min_cosine": 0.9999598615256969,
       "max_rel_error": 0.008960099396005337,
-      "quant_seconds": 4.912217300035991,
-      "dequant_seconds": 1.3994954999543552,
-      "seconds": 14.73182000000088
+      "quant_seconds": 4.368287599965697,
+      "dequant_seconds": 1.010028600016085,
+      "seconds": 11.935066300000472
     },
     "q4_0_ref": {
       "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -104,9 +104,9 @@
       "weighted_cosine": 0.9961480564505119,
       "min_cosine": 0.9917800631964317,
       "max_rel_error": 0.1286061658167199,
-      "quant_seconds": 8.664489199989475,
-      "dequant_seconds": 3.611296700011735,
-      "seconds": 20.784037000001263
+      "quant_seconds": 6.486834999923303,
+      "dequant_seconds": 3.3117399000839214,
+      "seconds": 16.62311480000062
     },
     "gguf:Q8_0": {
       "numel": 1100048384,
@@ -124,7 +124,7 @@
       "ratio_vs_fp32": 3.7614609889504624,
       "ratio_vs_bf16_gguf": 1.8815185611181666,
       "bits_per_param": 8.507332681105051,
-      "seconds": 32.83227049999914,
+      "seconds": 28.646275300001435,
       "reproduce": [
         "python convert_hf_to_gguf.py C:\\Users\\abeli\\.cache\\huggingface\\hub\\models--TinyLlama--TinyLlama-1.1B-Chat-v1.0\\snapshots\\fe8a4ea1ffedaf415f4da2f062534de366a451e6 --outtype bf16 --outfile C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf",
         "llama-quantize C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-Q8_0.gguf Q8_0"
@@ -147,7 +147,7 @@
       "ratio_vs_fp32": 6.58892877690854,
       "ratio_vs_bf16_gguf": 3.2958448400918154,
       "bits_per_param": 4.856631644304111,
-      "seconds": 34.70302450000236,
+      "seconds": 29.364184199999727,
       "reproduce": [
         "python convert_hf_to_gguf.py C:\\Users\\abeli\\.cache\\huggingface\\hub\\models--TinyLlama--TinyLlama-1.1B-Chat-v1.0\\snapshots\\fe8a4ea1ffedaf415f4da2f062534de366a451e6 --outtype bf16 --outfile C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf",
         "llama-quantize C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-Q4_K_M.gguf Q4_K_M"
@@ -166,46 +166,88 @@
       "methods": {
         "canonical8": {
           "perplexity": 11.483879944407654,
-          "quant_dequant_seconds": 30.52519519999987
+          "quant_dequant_seconds": 20.930345900000248
         },
         "canonical4": {
           "perplexity": 12.869576451028925,
-          "quant_dequant_seconds": 28.691553900000144
+          "quant_dequant_seconds": 22.454506499998388
         },
         "int8_per_row": {
           "perplexity": 11.508760029986943,
-          "quant_dequant_seconds": 5.857012800002849
+          "quant_dequant_seconds": 5.578885299997637
         },
         "q8_0_ref": {
           "perplexity": 11.48823263604661,
-          "quant_dequant_seconds": 6.0942909000004875
+          "quant_dequant_seconds": 5.881163600002765
         },
         "q4_0_ref": {
           "perplexity": 12.06329783062621,
-          "quant_dequant_seconds": 10.234392900001694
+          "quant_dequant_seconds": 10.011832199998025
         }
       },
       "fp32_perplexity": 11.492012609626268,
-      "fp32_ppl_seconds": 132.6383902000016,
-      "fp32_tokens_per_second": 3.6204861998439517
+      "fp32_ppl_seconds": 116.42863039999793,
+      "fp32_tokens_per_second": 4.412500088769975
     },
     "gguf": {
       "reference": "llama.cpp GGUF BF16",
       "methods": {
         "BF16": {
           "perplexity": 9.2915,
-          "prompt_tokens_per_second": 1344.172427,
-          "gen_tokens_per_second": 116.094793
+          "cpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 0,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 175.282185,
+            "gen_tokens_per_second": 15.339983
+          },
+          "gpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 99,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 1513.116829,
+            "gen_tokens_per_second": 117.720967
+          }
         },
         "Q8_0": {
           "perplexity": 9.2948,
-          "prompt_tokens_per_second": 1772.076429,
-          "gen_tokens_per_second": 145.483225
+          "cpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 0,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 460.0474,
+            "gen_tokens_per_second": 28.187353
+          },
+          "gpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 99,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 1893.134824,
+            "gen_tokens_per_second": 148.672811
+          }
         },
         "Q4_K_M": {
           "perplexity": 9.6241,
-          "prompt_tokens_per_second": 2278.936737,
-          "gen_tokens_per_second": 220.374654
+          "cpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 0,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 731.3297,
+            "gen_tokens_per_second": 49.429574
+          },
+          "gpu": {
+            "backends": "Vulkan",
+            "n_gpu_layers": 99,
+            "gpu_info": "AMD Radeon(TM) Graphics, NVIDIA GeForce GTX 1660 Ti",
+            "cpu_info": "AMD Ryzen 5 4600H with Radeon Graphics",
+            "prompt_tokens_per_second": 2354.49379,
+            "gen_tokens_per_second": 218.629923
+          }
         }
       }
     }

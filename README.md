@@ -80,9 +80,18 @@ Machine : Windows 11, AMD Ryzen 5 4600H (6 threads utilisés), 16 Go RAM, torch 
 - À 8 bits, la méthode canonique fait **mieux que l'INT8 par ligne** (erreur 0.0076 contre 0.0097, et elle résiste aux queues lourdes), mais **moins bien que Q8_0** (0.0055), qui coûte 0.5 bit de plus par paramètre. L'effet sur la perplexité n'est pas mesurable (11.484 contre 11.492 en FP32).
 - À 4 bits, la méthode canonique est **nettement moins bonne** que Q4_0 et que Q4_K_M : +12.0 % de perplexité, contre +5.0 % pour Q4_0 et +3.6 % pour Q4_K_M.
 
-**Vitesse :**
-- transformers FP32 sur CPU : **3.62 tokens/s** en génération (32 tokens). Les méthodes PyTorch (canonique, INT8, Q8_0/Q4_0 réf.) **n'ont aucun noyau bas‑bit** : l'inférence se fait sur les poids déquantifiés, donc **à la vitesse FP32**. La quantification puis la déquantification complète du modèle prennent 30.5 s (canonique 8 bits), contre 5.9 s pour l'INT8.
-- llama.cpp : [À VALIDER] le premier passage de `llama-bench` a utilisé le backend **Vulkan** (GTX 1660 Ti, toutes les couches sur le GPU). Ces vitesses ne sont donc pas comparables à transformers CPU. Le script mesure désormais CPU (`-ngl 0`) et GPU séparément, et enregistre le backend utilisé ; les chiffres arriveront avec la prochaine exécution.
+**Vitesse de génération** (32 tokens, 6 threads) :
+
+| Moteur / format | CPU (tokens/s) | GPU Vulkan, GTX 1660 Ti, toutes couches (tokens/s) |
+|---|---|---|
+| transformers FP32 (et toutes les méthodes PyTorch, qui s'exécutent sur poids déquantifiés) | 4.41 | — (torch CPU) |
+| llama.cpp GGUF BF16 | 15.3 | 117.7 |
+| llama.cpp GGUF Q8_0 | 28.2 | 148.7 |
+| llama.cpp GGUF Q4_K_M | 49.4 | 218.6 |
+
+- Les méthodes PyTorch (canonique, INT8, Q8_0/Q4_0 réf.) **n'ont aucun noyau bas‑bit** : l'inférence tourne à la vitesse FP32. La quantification puis la déquantification du modèle complet prennent 20.9 s en canonique 8 bits, contre 5.6 s en INT8.
+- Les colonnes CPU viennent de `llama-bench -ngl 0`. Le backend chargé reste Vulkan : la vitesse de *traitement du prompt* (dans le JSON) peut donc utiliser le GPU même avec `-ngl 0`, et elle est **[À VALIDER]**. La génération, elle, est faite sur CPU.
+- Deux exécutions complètes donnent des perplexités identiques à 4 décimales. Les vitesses varient : 3.62 et 4.41 tok/s pour transformers FP32 selon la charge de la machine.
 
 ### Mixtral‑8x7B — `python scripts/benchmark_real.py` et `python scripts/compare_baselines.py --model mistralai/Mixtral-8x7B-v0.1 --llama-cpp-dir <llama.cpp>`
 
