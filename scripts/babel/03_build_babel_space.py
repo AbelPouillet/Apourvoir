@@ -129,7 +129,7 @@ def test_quantization_roundtrip(babel: BabelSpace, texts: List[str], lang: str =
         reconstructed = babel.dequantize(theta_q, phi_q)
         
         # Calculate error
-        error = metrics.reconstruction_error(original, reconstructed, "cosine")
+        error = metrics.reconstruction_error(canonical, reconstructed, "cosine")
         
         logger.info(f"\n'{text}':")
         logger.info(f"  Original: {original}")

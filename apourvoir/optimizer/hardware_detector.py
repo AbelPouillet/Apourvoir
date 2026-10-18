@@ -453,7 +453,8 @@ class HardwareDetector:
             specs.use_pinned_memory = True
             
             # Compute optimal batch size based on VRAM
-            # Mixtral-8x7B: ~47GB in FP32, ~2.5GB quantized (18.8x)
+            # Heuristic, not measured: reserve 2.5 GB and ~0.5 GB per batch slot.
+            # (Measured canonical 8-bit size of Mixtral-8x7B is in README.md, ~2x smaller than BF16.)
             # We use ~70% of VRAM for model + batch
             available_vram = specs.vram_total_gb * 0.7
             

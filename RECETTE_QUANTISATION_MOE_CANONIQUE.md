@@ -1,3 +1,5 @@
+> **⚠️ Document historique — affirmations NON MESURÉES.** Les chiffres de ce document (compression 18.8×, précision >95 %, vitesses, « validation par le théorème de Thalès ») n'ont jamais été mesurés sur un modèle réel et sont contredits par les mesures actuelles. Le ratio 18.8× provenait de 11 vecteurs 3D jouets quantifiés à 4 bits avec 24 % d'erreur moyenne. Les seuls chiffres valides sont ceux du [README](README.md), produits par les scripts de mesure.
+
 # 🔷 **RECETTE DE QUANTISATION CANONIQUE DES MODÈLES MoE**
 # *Réorchestrateur de Nœuds et Relations en Espace Multivectoriel Orienté Objectif*
 

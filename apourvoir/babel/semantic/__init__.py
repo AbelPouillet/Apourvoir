@@ -9,8 +9,11 @@ Components:
 """
 
 from .canonical import CanonicalProjector, CanonicalConfig
+from .embedder import SemanticEmbedder, DEFAULT_EMBEDDING_MODEL
 
 __all__ = [
     "CanonicalProjector",
     "CanonicalConfig",
+    "SemanticEmbedder",
+    "DEFAULT_EMBEDDING_MODEL",
 ]

@@ -62,8 +62,11 @@ def quantize_at_bits(babel: BabelSpace, texts: List[str], n_bits: int, lang: str
         reconstructed = babel.dequantize(theta_q, phi_q)
         
         # Calculate errors
-        cosine_error = metrics.reconstruction_error(original, reconstructed, "cosine")
-        euclidean_error = metrics.reconstruction_error(original, reconstructed, "euclidean")
+        # Two angles only encode the direction of the 3D canonical point: the full
+        # embedding cannot be reconstructed from them. The error below therefore
+        # measures angular quantization of the canonical 3D point only.
+        cosine_error = metrics.reconstruction_error(canonical, reconstructed, "cosine")
+        euclidean_error = metrics.reconstruction_error(canonical, reconstructed, "euclidean")
         
         results["texts"][text] = {
             "original": original.tolist(),
@@ -78,7 +81,7 @@ def quantize_at_bits(babel: BabelSpace, texts: List[str], n_bits: int, lang: str
         logger.info(f"  {text}: cosine_error={cosine_error:.6f}, euclidean_error={euclidean_error:.6f}")
     
     # Calculate statistics
-    originals = [torch.tensor(results["texts"][t]["original"]) for t in texts]
+    originals = [torch.tensor(results["texts"][t]["canonical"]) for t in texts]
     reconstructions = [torch.tensor(results["texts"][t]["reconstructed"]) for t in texts]
     batch_metrics = metrics.batch_metrics(originals, reconstructions)
     results["statistics"] = batch_metrics

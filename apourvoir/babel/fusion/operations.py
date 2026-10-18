@@ -431,7 +431,7 @@ class BabelAlgebra:
         c: torch.Tensor
     ) -> bool:
         """
-        Validate Thales' theorem for three points.
+        Check whether the angle at the middle points is a right angle (Thales configuration).
         
         Checks if the angle at b is 90 degrees.
         

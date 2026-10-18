@@ -2,10 +2,15 @@
 Phonetic Encoder for Babel Space
 
 Converts words to phonetic embeddings by:
-1. Transcribing words to IPA phonemes
-2. Mapping phonemes to pre-trained embeddings
+1. Transcribing words to IPA phonemes (dictionary, then letter rules)
+2. Describing each IPA segment by its articulatory features (deterministic,
+   see ``features.py``)
 3. Weighting by articulatory complexity
-4. Producing normalized phonetic vectors
+4. Producing normalized phonetic vectors laid out as
+   [weighted mean | first phoneme | last phoneme], zero-padded to embedding_dim
+
+No random initialisation is used: the same word always gets the same vector,
+and words that sound alike get similar vectors.
 """
 
 import torch
@@ -14,6 +19,7 @@ from typing import Dict, List, Optional, Tuple, Any
 import logging
 
 from .phoneme_map import PHONEME_MAP, PHONEME_WEIGHTS, PHONEME_EMBEDDING_DIM
+from .features import NUM_FEATURES, segment_ipa, segment_features
 
 logger = logging.getLogger(__name__)
 
@@ -48,43 +54,55 @@ class PhoneticEncoder:
             embedding_dim: Dimension of phoneme embeddings
             use_weights: Whether to weight by articulatory complexity
         """
+        if embedding_dim < 3 * NUM_FEATURES:
+            raise ValueError(f"embedding_dim must be >= {3 * NUM_FEATURES}, got {embedding_dim}")
         self.lang = lang
         self.embedding_dim = embedding_dim
         self.use_weights = use_weights
-        
+
         # Load phoneme map
         self.phoneme_map = PHONEME_MAP.get(lang, {})
         self.phoneme_weights = PHONEME_WEIGHTS
-        
-        # Initialize phoneme embeddings (random for now, replace with pre-trained)
+
+        # Phoneme-unit embeddings (articulatory features, size NUM_FEATURES)
         self.phoneme_embeddings = self._init_phoneme_embeddings()
-        
-        # Special phoneme for unknown
-        self.unknown_phoneme = torch.randn(embedding_dim)
-        self.unknown_phoneme = self.unknown_phoneme / torch.norm(self.unknown_phoneme)
-        
+
         logger.info(f"PhoneticEncoder initialized: lang={lang}, dim={embedding_dim}")
-    
+
+    def _features_for_unit(self, phoneme: str) -> Optional[torch.Tensor]:
+        """Weighted mean of the articulatory features of an IPA unit (e.g. '/vwaʁ/')."""
+        segments = segment_ipa(phoneme)
+        if not segments:
+            return None
+        vecs = torch.stack([segment_features(s) for s in segments])
+        if self.use_weights:
+            w = torch.tensor([self.get_phoneme_weight(f"/{s.rstrip('~')}/") for s in segments])
+        else:
+            w = torch.ones(len(segments))
+        return (vecs * w.unsqueeze(1)).sum(dim=0) / w.sum()
+
     def _init_phoneme_embeddings(self) -> Dict[str, torch.Tensor]:
-        """Initialize phoneme embeddings (random for now)."""
+        """Compute deterministic feature embeddings for every known phoneme unit."""
         embeddings = {}
-        
-        # Get all unique phonemes from the map
-        all_phonemes = set()
+
+        all_phonemes = set(self.phoneme_weights.keys()) - {"default"}
         for word_phonemes in self.phoneme_map.values():
-            for phoneme in word_phonemes:
-                all_phonemes.add(phoneme)
-        
-        # Add phonemes from weights
-        for phoneme in self.phoneme_weights.keys():
-            all_phonemes.add(phoneme)
-        
-        # Initialize embeddings
-        for phoneme in all_phonemes:
-            embeddings[phoneme] = torch.randn(self.embedding_dim)
-            embeddings[phoneme] = embeddings[phoneme] / torch.norm(embeddings[phoneme])
-        
+            all_phonemes.update(word_phonemes)
+
+        for phoneme in sorted(all_phonemes):
+            vec = self._features_for_unit(phoneme)
+            if vec is not None:
+                embeddings[phoneme] = vec
+
         return embeddings
+
+    def _unit_embedding(self, phoneme: str) -> Optional[torch.Tensor]:
+        if phoneme not in self.phoneme_embeddings:
+            vec = self._features_for_unit(phoneme)
+            if vec is None:
+                return None
+            self.phoneme_embeddings[phoneme] = vec
+        return self.phoneme_embeddings[phoneme]
     
     def load_pretrained_embeddings(self, filepath: str) -> None:
         """
@@ -339,36 +357,30 @@ class PhoneticEncoder:
         Returns:
             Normalized phonetic embedding [embedding_dim]
         """
-        phonemes = self.word_to_phonemes(word)
-        
-        if not phonemes:
-            return torch.zeros(self.embedding_dim)
-        
-        # Get embeddings and weights
+        phonemes = self.word_to_phonemes(word) if word else []
+
+        # Embeddings of known units (unknown symbols are skipped, not randomised)
         embeddings = []
         weights = []
-        
         for phoneme in phonemes:
-            if phoneme in self.phoneme_embeddings:
-                embeddings.append(self.phoneme_embeddings[phoneme])
-                weights.append(self.get_phoneme_weight(phoneme))
-            else:
-                # Use unknown phoneme embedding
-                embeddings.append(self.unknown_phoneme)
-                weights.append(0.5)  # Lower weight for unknown
-        
-        # Stack embeddings
-        embeddings_tensor = torch.stack(embeddings, dim=0)  # [n_phonemes, embedding_dim]
-        weights_tensor = torch.tensor(weights, dtype=torch.float32)  # [n_phonemes]
-        
-        # Weighted sum
-        weighted_embeddings = embeddings_tensor * weights_tensor.unsqueeze(1)
-        P = weighted_embeddings.sum(dim=0) / (weights_tensor.sum() + 1e-10)
-        
-        # Normalize
-        P = P / (torch.norm(P) + 1e-10)
-        
-        return P
+            emb = self._unit_embedding(phoneme)
+            if emb is not None:
+                embeddings.append(emb)
+                weights.append(self.get_phoneme_weight(phoneme) if self.use_weights else 1.0)
+
+        if not embeddings:
+            return torch.zeros(self.embedding_dim)
+
+        embeddings_tensor = torch.stack(embeddings, dim=0)  # [n_phonemes, NUM_FEATURES]
+        weights_tensor = torch.tensor(weights, dtype=torch.float32)
+        mean = (embeddings_tensor * weights_tensor.unsqueeze(1)).sum(dim=0) / weights_tensor.sum()
+
+        P = torch.zeros(self.embedding_dim)
+        P[:NUM_FEATURES] = mean
+        P[NUM_FEATURES:2 * NUM_FEATURES] = embeddings_tensor[0]
+        P[2 * NUM_FEATURES:3 * NUM_FEATURES] = embeddings_tensor[-1]
+
+        return P / (torch.norm(P) + 1e-10)
     
     def batch_encode(self, words: List[str]) -> torch.Tensor:
         """
@@ -428,6 +440,10 @@ class PhoneticEncoder:
         Args:
             word_embeddings: Dictionary of {word: embedding}
         """
+        for word, embedding in word_embeddings.items():
+            if embedding.numel() != NUM_FEATURES:
+                raise ValueError(f"fine_tune expects {NUM_FEATURES}-dim embeddings, got {embedding.numel()} for '{word}'")
+
         # Group words by their phonemes
         phoneme_to_words = {}
         for word, embedding in word_embeddings.items():

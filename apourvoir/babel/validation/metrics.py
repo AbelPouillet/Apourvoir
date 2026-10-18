@@ -5,7 +5,7 @@ Provides comprehensive metrics for evaluating Babel space encodings:
 - Reconstruction error
 - Semantic similarity preservation
 - Compression ratio
-- Thales' theorem validation
+- Right-angle checks between vectors (exploratory; no semantic property demonstrated)
 - Layer consistency
 - Multilingual alignment
 
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MetricConfig:
     """Configuration for metrics."""
-    # Tolerance for Thales' theorem validation
+    # Tolerance for the right-angle check
     thales_tolerance: float = 0.01
     
     # Tolerance for semantic similarity
@@ -192,7 +192,7 @@ class BabelMetrics:
         v3: torch.Tensor
     ) -> Dict[str, Any]:
         """
-        Validate Thales' theorem for three vectors.
+        Check whether the angle at the middle vectors is a right angle (Thales configuration).
         
         Args:
             v1: First vector

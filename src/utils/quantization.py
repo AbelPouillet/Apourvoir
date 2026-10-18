@@ -86,15 +86,18 @@ class UniformQuantizer(Quantizer):
         if range_max is None:
             range_max = np.max(vec)
         
+        # Smallest unsigned dtype that holds 2^n_bits - 1 (int16 overflowed at 16 bits)
+        dtype = np.uint8 if self.n_bits <= 8 else np.uint16 if self.n_bits <= 16 else np.uint32
+        
         # Handle case where range is zero
         if range_max - range_min < 1e-10:
-            return np.zeros_like(vec, dtype=np.int16), 1.0, range_min
+            return np.zeros_like(vec, dtype=dtype), 1.0, range_min
         
         # Calculate scale
         scale = (2 ** self.n_bits - 1) / (range_max - range_min)
         
         # Quantize
-        quantized = np.round((vec - range_min) * scale).astype(np.int16)
+        quantized = np.round((vec - range_min) * scale).astype(dtype)
         
         return quantized, scale, range_min
     

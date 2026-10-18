@@ -1,497 +1,168 @@
 # Apourvoir
 
-> **A** pour dsigner l'angle et la mesure de l'omnipotence qui survient  l'assemblage du savoir dans son espace qui est son champ de vision
+> **A** pour désigner l'angle et la mesure de l'omnipotence qui survient à l'assemblage du savoir dans son espace qui est son champ de vision
 
-**Apourvoir** est un framework de **quantisation canonique** pour les modles MoE de Mistral AI qui encode gomtriquement la signification smantique dans un espace comprime et rigoureux mathmatiquement.
+**Apourvoir** est un projet expérimental de **quantisation « canonique »** (sphérique) des poids de modèles de langage, accompagné d'un espace d'embeddings « Babel » (phonétique + syntaxe + sémantique).
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+**Règle du dépôt : tout chiffre de ce README provient d'une exécution réelle et indique la commande qui permet de le reproduire.** Ce qui n'a pas été mesuré est marqué **[NON MESURÉ]**.
 
 ---
 
-##  Caractristiques Principales
+## ⚠️ Correctifs d'intégrité (octobre 2026)
 
-| Fonctionnalit | Description |
-|----------------|-------------|
-| **Espace 3D Canonique** | x=pou, y=voir, z(f) avec topologie torus |
-| **Compression 18.8x** | 47 GB  2.5 GB (Mixtral-8x7B) |
-| **Espace Babel** | P (Phontique) + S (Syntaxe) + M (Smantique) |
-| **Thorme de Thals** | Validation gomtrique des relations |
-| **4 Couches Concentriques** | Fondamentaux  Techniques |
-| **SDK Optimis** | Adaptation automatique au matriel |
-| **5 Tiers Matriels** | 4GB VRAM  24GB+ VRAM |
+Les versions précédentes affirmaient une **compression de 18.8×** et une **précision > 95 %** sur Mixtral‑8x7B. **Ces chiffres n'avaient jamais été mesurés sur un modèle**, et ils sont faux :
+
+- le 18.8× venait de `results/rapport_quantisation_optimisee.json`, c'est‑à‑dire de **11 vecteurs 3D jouets** quantifiés à 4 bits, avec **24 % d'erreur moyenne et 73 % d'erreur maximale** ;
+- l'ancienne quantisation ne traitait que les **3 premières composantes** d'un vecteur et jetait sa norme : elle ne pouvait **pas reconstruire** un poids de dimension 4096 ;
+- les embeddings Babel étaient **aléatoires** (`torch.randn`, `hash(word)`) ;
+- les scripts `03`/`04`/`05`/`07` produisaient des **chiffres simulés ou codés en dur**. Ils ont été supprimés.
+
+**Mesure réelle :** la méthode canonique à 8 bits compresse **4.0× par rapport au FP32**, soit **2.0× par rapport au BF16** dans lequel Mistral distribue ses modèles. C'est le même budget qu'un INT8. Voir les tableaux ci‑dessous.
 
 ---
 
-##  Installation Rapide
+## Méthode canonique (sphérique par triplets)
 
-### 1. Cloner le dpt
+`apourvoir/quantization/canonical.py` :
+
+1. Le tenseur est aplati en lignes `(N, D)`, et chaque ligne est découpée en `ceil(D/3)` triplets `(x, y, z)`. La dernière dimension peut être quelconque (4096, 14336, …).
+2. Chaque triplet est converti en `(r, θ, φ)`. `θ` et `φ` sont quantifiés uniformément sur `n_bits` ; `r` est normalisé par le rayon maximal de la ligne (une échelle float32 par ligne) et encodé en `sqrt(r / r_max)` sur `n_bits`.
+3. Coût exact : `3·n_bits` bits par triplet, plus 32 bits par ligne, soit **≈ n_bits bits par paramètre**.
+
+```python
+import torch
+from apourvoir.quantization import quantifier_tensor_canonique, déquantifier_tensor_canonique, erreur_relative
+
+w = torch.randn(14336, 4096)
+codes, meta = quantifier_tensor_canonique(w, n_bits=8)
+w_hat = déquantifier_tensor_canonique(codes, meta)
+print(meta["compression_ratio"], erreur_relative(w, w_hat))   # ratio calculé sur les octets réellement stockés
+```
+
+**Pourquoi pas une PCA en 3D ?** Une reconstruction de rang 3 d'une matrice `100×4096` laisse **97.5 % d'erreur relative** ; sur des poids réels de TinyLlama, l'erreur va de **77 % à 99 %**. Une PCA 3D détruit donc l'information (`python scripts/validate_quantization.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0`).
+
+---
+
+## Résultats mesurés
+
+Machine : Windows 11, AMD Ryzen 5 4600H (6 threads utilisés), 16 Go RAM, torch 2.14.1+cpu, llama.cpp b9873 (a4107133a). Toutes les méthodes sont appliquées **aux mêmes poids**.
+
+### Roundtrip sur tenseurs synthétiques — `python scripts/validate_quantization.py`
+
+| Tenseur (graine 0) | canonique 8 bits | canonique 4 bits | INT8 / ligne | Q8_0 (réf.) | Q4_0 (réf.) |
+|---|---|---|---|---|---|
+| randn(100, 4096) | 0.0076 | 0.1249 | 0.0087 | 0.0054 | 0.0862 |
+| randn(100, 14336) | 0.0077 | 0.1257 | 0.0094 | 0.0054 | 0.0860 |
+| Student‑t 3 ddl (100, 4096) | 0.0090 | 0.1463 | 0.0367 | 0.0083 | 0.1289 |
+
+*(erreur relative de Frobenius ‖x − x̂‖ / ‖x‖ ; bits/valeur : 8.01, 4.01, 8.0, 8.5, 4.5)*
+
+### TinyLlama‑1.1B (poids réels BF16) — `python scripts/compare_baselines.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 --model-level --llama-cpp-dir <llama.cpp>`
+
+1 100 048 384 paramètres ; 2.200 Go en BF16 ; 4.400 Go en FP32.
+
+| Méthode | Taille | bits/param | vs FP32 | vs BF16 | cos. moyen | err. rel. | Perplexité ¹ |
+|---|---|---|---|---|---|---|---|
+| référence | — | — | — | — | 1 | 0 | 11.492 (HF FP32) / 9.2915 (GGUF BF16) |
+| **canonique 8 bits** | 1.102 Go | 8.018 | 3.99× | 2.00× | 0.999971 | 0.00763 | **11.484** |
+| **canonique 4 bits** | 0.552 Go | 4.016 | 7.97× | 3.98× | 0.992175 | 0.12529 | **12.870** |
+| INT8 par ligne | 1.102 Go | 8.014 | 3.99× | 2.00× | 0.999952 | 0.00969 | 11.509 |
+| Q8_0 (réimpl. PyTorch) | 1.169 Go | 8.501 | 3.76× | 1.88× | 0.999985 | 0.00548 | 11.488 |
+| Q4_0 (réimpl. PyTorch) | 0.619 Go | 4.501 | 7.11× | 3.55× | 0.996148 | 0.08781 | 12.063 |
+| GGUF Q8_0 (llama.cpp) | 1.170 Go ² | 8.507 | 3.76× | 1.88× | 0.999985 | 0.00548 | 9.2948 |
+| GGUF Q4_K_M (llama.cpp) | 0.668 Go ² | 4.857 | 6.59× | 3.30× | 0.997805 | 0.06308 | 9.6241 |
+| AWQ | **[NON MESURÉ]** : AutoAWQ requiert un GPU CUDA ; torch est installé en version CPU sur cette machine | | | | | | |
+
+¹ wikitext‑2 (test), 20 fenêtres de 512 tokens. Les deux pipelines **ne sont pas comparables entre eux** : llama.cpp ne note que la seconde moitié de chaque fenêtre. Il faut comparer chaque méthode à **sa propre** référence (HF FP32 ou GGUF BF16).
+² taille du fichier GGUF (métadonnées et tokenizer inclus). La réimplémentation `q8_0_ref` donne **exactement** la même erreur que le vrai GGUF Q8_0, ce qui valide le banc de mesure.
+
+**Lecture honnête :**
+- À 8 bits, la méthode canonique fait **mieux que l'INT8 par ligne** (erreur 0.0076 contre 0.0097, et elle résiste aux queues lourdes), mais **moins bien que Q8_0** (0.0055), qui coûte 0.5 bit de plus par paramètre. L'effet sur la perplexité n'est pas mesurable (11.484 contre 11.492 en FP32).
+- À 4 bits, la méthode canonique est **nettement moins bonne** que Q4_0 et que Q4_K_M : +12.0 % de perplexité, contre +5.0 % pour Q4_0 et +3.6 % pour Q4_K_M.
+
+**Vitesse :**
+- transformers FP32 sur CPU : **3.62 tokens/s** en génération (32 tokens). Les méthodes PyTorch (canonique, INT8, Q8_0/Q4_0 réf.) **n'ont aucun noyau bas‑bit** : l'inférence se fait sur les poids déquantifiés, donc **à la vitesse FP32**. La quantification puis la déquantification complète du modèle prennent 30.5 s (canonique 8 bits), contre 5.9 s pour l'INT8.
+- llama.cpp : [À VALIDER] le premier passage de `llama-bench` a utilisé le backend **Vulkan** (GTX 1660 Ti, toutes les couches sur le GPU). Ces vitesses ne sont donc pas comparables à transformers CPU. Le script mesure désormais CPU (`-ngl 0`) et GPU séparément, et enregistre le backend utilisé ; les chiffres arriveront avec la prochaine exécution.
+
+### Mixtral‑8x7B — `python scripts/benchmark_real.py` et `python scripts/compare_baselines.py --model mistralai/Mixtral-8x7B-v0.1 --llama-cpp-dir <llama.cpp>`
+
+Les 19 fichiers safetensors (995 tenseurs, dont 930 tenseurs 2‑D quantifiés) sont lus tenseur par tenseur, sur CPU, en 1814 s.
+
+| Mesure | Valeur [MESURÉ] |
+|---|---|
+| Paramètres | 46 702 792 704 |
+| Taille d'origine (safetensors BF16) | 93.406 Go |
+| Taille équivalente FP32 | 186.811 Go |
+| **Taille compressée (canonique 8 bits)** | **46.755 Go** |
+| Bits par paramètre | 8.0089 |
+| **Compression ratio vs FP32** | **4.00×** |
+| Compression ratio vs BF16 | 2.00× |
+| Erreur relative pondérée / max | 0.007657 / 0.008662 |
+| Cosinus pondéré / min | 0.999971 / 0.999963 |
+
+Détails par tenseur : `results/benchmark_mistralai__Mixtral-8x7B-v0.1_canonical8.json`. *(L'ancien README annonçait 2.5 Go et 18.8× : c'est faux d'un facteur ~19.)*
+
+Comparaison avec les baselines sur Mixtral (INT8, Q8_0/Q4_0, GGUF Q8_0/Q4_K_M) : [EN COURS DE MESURE].
+
+---
+
+## Espace Babel (P + S + M)
+
+| Dimension | Encodage actuel | Avant |
+|---|---|---|
+| **P** phonétique | traits articulatoires IPA (voisement, nasalité, lieu, mode, aperture, antériorité, arrondissement), vecteur `[moyenne | 1er phonème | dernier phonème]` de 64 dimensions, déterministe | `torch.randn` |
+| **S** syntaxe | fréquences de lettres du token + POS one‑hot + encodages sinusoïdaux de profondeur et de position, déterministe | `torch.randn` / `hash` |
+| **M** sémantique | `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (768 dim, téléchargé depuis HuggingFace puis mis en cache), projeté en 3D sur la base orthonormée (Gram‑Schmidt) des embeddings de « pou », « voir » et « savoir » | `hash(word)` |
+
+Mesures (`python -m pytest tests/test_embeddings.py`) :
+- sémantique (mpnet) : similarité « roi »/« reine » = 0.740, contre 0.267 pour « roi »/« banane ». Sur 20 triplets français (ancre, proche, éloigné), **19/20** sont bien ordonnés avec mpnet ; l'échec est « homme/femme/voiture ». Pour comparaison : 17/20 avec paraphrase‑multilingual‑MiniLM‑L12‑v2, 19/20 avec multilingual‑e5‑small, 15/20 avec all‑MiniLM‑L6‑v2 ;
+- phonétique : « bateau »/« gâteau » = 0.88, contre 0.26 pour « bateau »/« chien ».
+
+La projection 3D de M **ne conserve qu'une partie de l'information**. Les similarités doivent se calculer sur l'embedding complet (`BabelSpace.semantic_embedding`). Les deux angles produits par `BabelSpace.quantize` codent seulement la direction du point 3D : c'est un code avec perte, **pas une compression réversible** de l'embedding.
+
+---
+
+## Installation
 
 ```bash
 git clone https://github.com/Albo-co/Apourvoir.git
 cd Apourvoir
-```
-
-### 2. Installer les dpendances
-
-```bash
-# Crer un environnement virtuel (recommand)
-python -m venv venv
-
-# Activer l'environnement
-# Linux/Mac:
-source venv/bin/activate
-# Windows:
-venv\Scripts\activate
-
-# Installer les dpendances de base
 pip install -r requirements.txt
-
-# Installer PyTorch avec CUDA (pour GPU NVIDIA)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Installer GPUtil pour la dtection GPU (optionnel)
-pip install gputil
+python -c "from apourvoir.quantization import quantifier_tensor_canonique; from apourvoir.babel import BabelSpace; print('ok')"
+python -m pytest -q
 ```
 
-### 3. Vrifier l'installation
+Pour les baselines GGUF : installer les binaires llama.cpp (`llama-quantize`, `llama-perplexity` et `llama-bench` dans le PATH), et cloner le dépôt llama.cpp **à la même version** (ce clone fournit `convert_hf_to_gguf.py` et `gguf-py`), puis passer `--llama-cpp-dir`.
 
-```bash
-python -c "from apourvoir.babel import BabelSpace; print('Apourvoir est prt !')"
-```
+## Scripts de mesure
+
+| Script | Rôle |
+|---|---|
+| `scripts/validate_quantization.py` | roundtrip quantize → dequantize sur tenseurs synthétiques et réels, et comparaison avec la PCA 3D |
+| `scripts/benchmark_real.py` | méthode canonique sur tous les poids d'un modèle HF (Mixtral par défaut), lecture tenseur par tenseur : **pas de GPU requis**, quelques Go de RAM |
+| `scripts/compare_baselines.py` | canonique contre INT8, Q8_0/Q4_0 (réimpl.), GGUF Q8_0/Q4_K_M (llama.cpp) et AWQ, plus perplexité et vitesse avec `--model-level` |
+| `scripts/02_quantize_canonical.py` | écrit un modèle quantifié en safetensors (codes + échelles) et mesure la taille du fichier |
+| `scripts/run_all_benchmarks.sh` | lance tout |
+
+Chaque script affiche la commande exécutée et écrit ses résultats détaillés (par tenseur) dans `results/`.
 
 ---
 
-##  Utilisation
+## Limitations et bugs connus
 
-###  Lanceur Optimis (Recommand)
-
-Le moyen le plus simple de dmarrer :
-
-```bash
-# Afficher les informations matrielles
-python scripts/launcher/launch.py --info
-
-# Lancer avec configuration automatique
-python scripts/launcher/launch.py
-
-# Lancer avec un modle spcifique
-python scripts/launcher/launch.py --model mistralai/Mixtral-8x7B-v0.1
-
-# Lancer avec optimisation vitesse
-python scripts/launcher/launch.py --model mistralai/Mixtral-8x22B-v0.1 --preset speed
-```
-
-**Options disponibles :**
-```
---model MODEL           Modle  charger (dfaut: mistralai/Mixtral-8x7B-v0.1)
---preset PRESET         Prset d'optimisation (balanced/speed/quality/memory/latency)
---no-api               Dsactiver le serveur API
---no-ui                Dsactiver l'interface web
---api-port PORT        Port du serveur API (dfaut: 8080)
---ui-port PORT         Port de l'interface web (dfaut: 8000)
---config FILE          Charger la configuration depuis un fichier
---save-config FILE     Sauvegarder la configuration dans un fichier
---log-level LEVEL      Niveau de journalisation (DEBUG/INFO/WARNING/ERROR)
---info                 Afficher les infos matrielles et quitter
---validate             Valider la configuration et quitter
-```
-
-###  Utilisation Programmatique
-
-#### Espace Babel
-
-```python
-from apourvoir.babel import BabelSpace, BabelConfig
-
-# Initialiser l'espace Babel
-config = BabelConfig(
-    phonetic_dim=64,
-    syntax_dim=64,
-    semantic_dim=3,
-    output_dim=128,
-    n_bits=8
-)
-
-babel = BabelSpace(config)
-babel.initialize_references("fr")
-
-# Encoder du texte
-text = "pouvoir voir savoir"
-embedding = babel.encode(text, lang="fr")
-
-# Quantifier et dquantifier
-(theta_q, phi_q), canonical = babel.quantize(embedding)
-reconstructed = babel.dequantize(theta_q, phi_q)
-
-# Valider les relations canoniques
-result = babel.get_relationship("pouvoir", "lumiere", "savoir", lang="fr")
-print(f"Relation de Thales valide: {result['thales_valid']}")
-```
-
-#### Quantisation Canonique
-
-```python
-from apourvoir.quantization.canonical import (
-    quantifier_tensor_canonique,
-    dquantifier_tensor_canonique
-)
-import torch
-
-# Crer un tenseur 3D
-original = torch.randn(1000, 1000, 3)
-
-# Quantifier
-quantized, metadata = quantifier_tensor_canonique(
-    original, 
-    n_bits=8, 
-    R=2.0, 
-    r=1.0
-)
-
-# Dquantifier
-reconstructed = dquantifier_tensor_canonique(quantized, metadata)
-
-# Calculer le ratio de compression
-original_size = original.numel() * 4  # float32 = 4 bytes
-compressed_size = quantized.numel() * 1  # uint8 = 1 byte
-ratio = original_size / compressed_size
-print(f"Ratio de compression: {ratio:.2f}x")
-```
-
-###  Benchmarks
-
-Lancer tous les benchmarks :
-
-```bash
-# Linux/Mac
-./scripts/run_all_benchmarks.sh
-
-# Windows
-scripts\run_all_benchmarks.bat
-```
-
-Ou individuellement :
-
-```bash
-python scripts/02_quantize_canonical.py
-python scripts/03_benchmark_inference.py
-python scripts/04_benchmark_memory.py
-python scripts/05_validate_semantics.py
-```
+- **Pas de noyau d'inférence bas‑bit** : un modèle quantifié de façon canonique doit être déquantifié avant l'inférence. Il n'y a donc aucun gain de vitesse, ni de mémoire à l'exécution.
+- **4 bits** : la méthode canonique est moins précise que Q4_0 et Q4_K_M au même budget (voir tableau).
+- **Mixtral, niveau modèle** : perplexité et vitesse **[NON MESURÉ]**. Le modèle (93 Go en BF16) ne tient pas en RAM sur la machine de mesure (16 Go).
+- **AWQ** : **[NON MESURÉ]** (pas de GPU CUDA utilisable par torch sur la machine de mesure).
+- **Couches concentriques** (`CanonicalQuantizer`, couches 1 à 4 avec 8/6/4/4 bits) : simple politique de bits, sans bénéfice mesuré.
+- **Relations « de Thalès »** : `ThalesTriangle` et `validate_thales` mesurent seulement si un angle vaut 90°. **Aucune propriété sémantique n'est démontrée.**
+- **SDK `apourvoir/optimizer`** (tiers matériels, presets, batching adaptatif, parallélisme d'experts) : **[NON MESURÉ]**. `adaptive_batching.py` contient encore une démo avec des valeurs `np.random` ; les tableaux de tiers et presets sont des heuristiques non validées.
+- **Lanceur et API** (`scripts/launcher/launch.py`) : le serveur API, l'interface web et le moteur d'inférence sont des **stubs** qui se contentent de journaliser. Il n'existe **pas** d'endpoint `/v1/completions` fonctionnel ni de compatibilité vérifiée avec des agents de codage.
+- **Documents historiques** (`MAIL_POUR_MISTRAL_AI.md`, `RECETTE_QUANTISATION_MOE_CANONIQUE.md`, `README_APOURVOIR.md`, `results/*.json|png` d'avant octobre 2026) : ils contiennent les anciennes affirmations non mesurées et sont signalés comme tels.
+- `src/` est un module historique indépendant (alignement savoir/pouvoir) ; ses tests passent, mais il n'est pas utilisé par la quantisation.
 
 ---
 
-##  Tiers Matriels
+## Licence
 
-Le SDK s'adapte automatiquement  votre matriel :
-
-| Tier | VRAM | RAM | Curs | Batch Max | n_bits | Threads |
-|------|------|-----|-------|-----------|--------|----------|
-| **TIER_1** | 4GB | 8GB | 6 | 4 | 4 | 4 |
-| **TIER_2** | 8GB | 16GB | 8-12 | 8 | 6 | 8 |
-| **TIER_3** | 12GB | 32GB | 12-16 | 16 | 8 | 12 |
-| **TIER_4** | 16GB | 48GB | 16-24 | 32 | 10 | 16 |
-| **TIER_5** | 24GB+ | 64GB+ | 24+ | 64 | 12 | 24 |
-
-### Presets d'Optimisation
-
-| Preset | Description | Cas d'Usage |
-|--------|-------------|-------------|
-| `balanced` | quilibre vitesse/qualit | Usage gnral |
-| `speed` | Performance maximale | Infrence rapide |
-| `quality` | Qualit maximale | Prcision leve |
-| `memory` | Mmoire minimale | Ressources limites |
-| `latency` | Latence minimale | Temps rel |
-
----
-
-##  Espace Babel
-
-L'espace **Babel** combine trois dimensions pour une compression maximale tout en prservant la signification :
-
-###  P - Phontique
-- Encodage IPA des phonmes
-- Poids par complexit articulatoire
-- Support multilingue (Franais, Anglais, Espagnol, Allemand)
-
-###  S - Syntaxe  
-- Arbres syntaxiques hirarchiques
-- tiquetage grammatical (POS)
-- Encodage de la structure et de la position
-
-###  M - Smantique
-- Projection sur espace canonique 3D
-- Topologie torus (R=2.0, r=1.0)
-- Validation par Thorme de Thals
-
-### Fusion P+S+M
-
-```
-Combined = P * p_weight + S * s_weight + M * m_weight
-```
-
----
-
-##  Modles Supports
-
-| Modle | Taille FP32 | Taille Compresse | Ratio | Tier Minimum |
-|-----------|--------------|-------------------|-------|--------------|
-| Mixtral-8x7B | 47 GB | 2.5 GB | 18.8x | TIER_2 |
-| Mixtral-8x22B | 140 GB | 7.5 GB | 18.8x | TIER_3 |
-| Qwen2-72B | 144 GB | 8 GB | 18x | TIER_3 |
-
----
-
-##  API Serveur
-
-### Dmarrer le serveur
-
-```bash
-python scripts/launcher/launch.py --enable-api --api-port 8080
-```
-
-### Utiliser l'API
-
-```python
-import requests
-import json
-
-response = requests.post(
-    "http://localhost:8080/v1/completions",
-    json={
-        "model": "mistralai/Mixtral-8x7B-v0.1",
-        "prompt": "Explique la quantisation canonique en franais",
-        "max_tokens": 100,
-        "temperature": 0.7
-    },
-    headers={"Authorization": "Bearer any_key"}
-)
-
-result = response.json()
-print(result["choices"][0]["text"])
-```
-
-### Compatibilit avec les Agents de Codage
-
-Apourvoir est compatible avec :
-- **Claude Code** : `ANTHROPIC_BASE_URL=http://localhost:8080`
-- **GitHub Copilot**
-- **Cursor**
-- **Codex**
-- **Tout outil compatible OpenAI API**
-
----
-
-##  Rsultats et Performances
-
-### Benchmarks Mixtral-8x7B
-
-| Configuration | Ratio | Prcision | Vitesse (tokens/s) | VRAM |
-|---------------|-------|-----------|-------------------|------|
-| FP32 | 1.0x | 100% | 5 | 47 GB |
-| INT8 | 4.0x | 99.5% | 15 | 24 GB |
-| **Canonical 8-bit** | **18.8x** | **>95%** | **20** | **2.5 GB** |
-| Canonical 4-bit | 37.6x | >90% | 30 | 1.25 GB |
-
-### Validation Thorme de Thals
-
-```python
-# Triangle pouvoir - lumire - savoir
-result = babel.get_relationship("pouvoir", "lumiere", "savoir")
-# Thales valid: True
-# Angle v1-v2: 90.00
-# Angle v2-v3: 90.00
-# Angle v1-v3: 12.22
-```
-
----
-
-##  Structure du Projet
-
-```
-Apourvoir/
- apourvoir/
-     babel/                      # Espace multivectoriel
-        phonetic/             # Dimension phontique
-        syntax/               # Dimension syntaxique
-        semantic/             # Dimension smantique
-        fusion/                # Fusion P+S+M
-        validation/           # Mtriques
-     quantization/              # Quantisation canonique
-     optimizer/                 # SDK d'optimisation
-        launcher/              # Lanceur optimis
-        hardware_detector.py
-        memory_manager.py
-        adaptive_batching.py
-        dynamic_quant.py
-        expert_parallelism.py
-        kernel_fusion.py
-        thread_pool.py
-        benchmark_profiler.py
- scripts/
-     launcher/                   # Scripts de lancement
-     babel/                      # Scripts Babel
-     01_download_models.py
-     02_quantize_canonical.py
-     03_benchmark_inference.py
-     04_benchmark_memory.py
-     05_validate_semantics.py
-     06_generate_report.py
-     07_compare_results.py
-     run_all_benchmarks.sh
- docs/
-     RECETTE_QUANTISATION_MOE_CANONIQUE.md
-     MAIL_POUR_MISTRAL_AI.md
-```
-
----
-
-##  Dpannage
-
-###  Problmes Courants
-
-#### 1. "No GPU detected"
-```bash
-pip install gputil
-```
-
-#### 2. "CUDA out of memory"
-```bash
-# Utiliser un preset memory
-python scripts/launcher/launch.py --preset memory
-
-# Ou rduire le batch size
-python scripts/launcher/launch.py --preset memory --model smaller_model
-```
-
-#### 3. "Module not found"
-```bash
-pip install -r requirements.txt
-```
-
-#### 4. "Insufficient VRAM for model"
-```bash
-# Utiliser un modle plus petit
-python scripts/launcher/launch.py --model mistralai/Mixtral-8x7B-v0.1
-
-# Ou activer le swap vers le disque
-python scripts/launcher/launch.py --preset memory
-```
-
-###  Vrifier l'installation
-
-```bash
-# Tester l'import
-python -c "from apourvoir.babel import BabelSpace; print('OK')"
-
-# Tester le lanceur
-python scripts/launcher/launch.py --info
-
-# Tester la quantisation
-python scripts/babel/03_build_babel_space.py --texts pouvoir voir savoir
-```
-
----
-
-##  Configuration Avance
-
-### Fichier de Configuration
-
-```json
-{
-  "tier": "tier_3",
-  "preset": "balanced",
-  "quantization": {
-    "n_bits": 8,
-    "method": "angular",
-    "adaptive": true,
-    "min_bits": 4,
-    "max_bits": 16
-  },
-  "memory": {
-    "max_vram_gb": 10.0,
-    "max_ram_gb": 24.0,
-    "cache_size_gb": 2.0,
-    "preload": true
-  },
-  "parallelism": {
-    "cpu_threads": 12,
-    "gpu_streams": 4,
-    "multi_gpu": false,
-    "parallel_experts": 8
-  },
-  "batch": {
-    "max_batch_size": 16,
-    "optimal_batch_size": 8,
-    "dynamic": true
-  }
-}
-```
-
-### Charger une Configuration
-
-```bash
-python scripts/launcher/launch.py --config my_config.json
-```
-
-### Sauvegarder une Configuration
-
-```bash
-python scripts/launcher/launch.py --save-config my_config.json
-```
-
----
-
-##  Contribution
-
-Les contributions sont les bienvenues ! 
-
-1. **Forker** le projet
-2. **Crer** une branche (`git checkout -b feature/ma-fonctionnalit`)
-3. **Commiter** vos changements (`git commit -m 'Ajout fonctionnalit'`)
-4. **Pousser** vers la branche (`git push origin feature/ma-fonctionnalit`)
-5. **Ouvrir** une Pull Request
-
-### Bonnes Pratiques
-
-- Respecter le style de code existant
-- Ajouter des tests pour les nouvelles fonctionnalits
-- Documenter les changements dans le CHANGELOG
-- Utiliser des noms de variables clairs
-
----
-
-##  Licence
-
-**MIT License** - Libre d'utiliser pour usage personnel et commercial.
-
----
-
-##  Remerciements
-
-- **Mistral AI** pour les modles MoE exceptionnels
-- **La communaut open-source** pour les outils de quantisation
-- **Tous les contributeurs** du projet
-
----
-
-##  Ressources
-
-- **Repository** : [https://github.com/Albo-co/Apourvoir](https://github.com/Albo-co/Apourvoir)
-- **Documentation** : [docs/RECETTE_QUANTISATION_MOE_CANONIQUE.md](docs/RECETTE_QUANTISATION_MOE_CANONIQUE.md)
-- **Philosophie** : "A pour dsigner l'angle et la mesure de l'omnipotence qui survient  l'assemblage du savoir dans son espace qui est son champ de vision"
-
----
-
-<div align="center">
-
-** Prt  l'emploi ! **
-
-```bash
-# Dmarrez ds maintenant
-python scripts/launcher/launch.py --info
-```
-
-</div>
+MIT.

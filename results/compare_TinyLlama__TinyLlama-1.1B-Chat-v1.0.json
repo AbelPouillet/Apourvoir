@@ -1,0 +1,213 @@
+{
+  "command": "python scripts/compare_baselines.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 --model-level --threads 6 --llama-cpp-dir C:/Users/abeli/AppData/Local/Temp/claude/C--PourAlbo-Apourvoir/bfe0d8d7-cf73-4d43-b56f-473475e6d71e/scratchpad/llamacpp --work-dir C:/Users/abeli/AppData/Local/Temp/claude/C--PourAlbo-Apourvoir/bfe0d8d7-cf73-4d43-b56f-473475e6d71e/scratchpad/gguf_work",
+  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+  "machine": {
+    "platform": "Windows-11-10.0.26200-SP0",
+    "torch": "2.14.1+cpu",
+    "cpu_threads": 6,
+    "cuda": false
+  },
+  "weights": {
+    "canonical8": {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "canonical8",
+      "num_tensors": 201,
+      "num_quantized_tensors": 156,
+      "numel": 1100048384,
+      "original_bytes": 2200096768,
+      "fp32_bytes": 4400193536,
+      "stored_bytes": 1102476800,
+      "ratio_vs_fp32": 3.991189235002496,
+      "ratio_vs_original_dtype": 1.995594617501248,
+      "bits_per_param": 8.017660430470665,
+      "weighted_rel_error": 0.007631647428988682,
+      "weighted_cosine": 0.9999708770591379,
+      "min_cosine": 0.9999644028942293,
+      "max_rel_error": 0.008437607493028887,
+      "quant_seconds": 19.536656800020864,
+      "dequant_seconds": 10.4420214999991,
+      "seconds": 40.098573999999644
+    },
+    "canonical4": {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "canonical4",
+      "num_tensors": 201,
+      "num_quantized_tensors": 156,
+      "numel": 1100048384,
+      "original_bytes": 2200096768,
+      "fp32_bytes": 4400193536,
+      "stored_bytes": 552247040,
+      "ratio_vs_fp32": 7.967799222608781,
+      "ratio_vs_original_dtype": 3.9838996113043903,
+      "bits_per_param": 4.016165456227787,
+      "weighted_rel_error": 0.12529368416369394,
+      "weighted_cosine": 0.9921748695140566,
+      "min_cosine": 0.9911224692756586,
+      "max_rel_error": 0.13373244479425425,
+      "quant_seconds": 16.166302599973278,
+      "dequant_seconds": 9.787884100016527,
+      "seconds": 33.975749900000665
+    },
+    "int8_per_row": {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "int8_per_row",
+      "num_tensors": 201,
+      "num_quantized_tensors": 156,
+      "numel": 1100048384,
+      "original_bytes": 2200096768,
+      "fp32_bytes": 4400193536,
+      "stored_bytes": 1101973504,
+      "ratio_vs_fp32": 3.9930121005885817,
+      "ratio_vs_original_dtype": 1.9965060502942908,
+      "bits_per_param": 8.014000256919608,
+      "weighted_rel_error": 0.009689539399434807,
+      "weighted_cosine": 0.9999520650242062,
+      "min_cosine": 0.9995589257579585,
+      "max_rel_error": 0.029707454349099736,
+      "quant_seconds": 4.315444299998489,
+      "dequant_seconds": 1.502657300021383,
+      "seconds": 14.124953199996526
+    },
+    "q8_0_ref": {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "q8_0_ref",
+      "num_tensors": 201,
+      "num_quantized_tensors": 156,
+      "numel": 1100048384,
+      "original_bytes": 2200096768,
+      "fp32_bytes": 4400193536,
+      "stored_bytes": 1168887808,
+      "ratio_vs_fp32": 3.764427608778686,
+      "ratio_vs_original_dtype": 1.882213804389343,
+      "bits_per_param": 8.50062833599872,
+      "weighted_rel_error": 0.005478108378145516,
+      "weighted_cosine": 0.9999849721419037,
+      "min_cosine": 0.9999598615256969,
+      "max_rel_error": 0.008960099396005337,
+      "quant_seconds": 4.912217300035991,
+      "dequant_seconds": 1.3994954999543552,
+      "seconds": 14.73182000000088
+    },
+    "q4_0_ref": {
+      "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+      "method": "q4_0_ref",
+      "num_tensors": 201,
+      "num_quantized_tensors": 156,
+      "numel": 1100048384,
+      "original_bytes": 2200096768,
+      "fp32_bytes": 4400193536,
+      "stored_bytes": 618909696,
+      "ratio_vs_fp32": 7.109588950437125,
+      "ratio_vs_original_dtype": 3.5547944752185625,
+      "bits_per_param": 4.500963448531369,
+      "weighted_rel_error": 0.08780846730032114,
+      "weighted_cosine": 0.9961480564505119,
+      "min_cosine": 0.9917800631964317,
+      "max_rel_error": 0.1286061658167199,
+      "quant_seconds": 8.664489199989475,
+      "dequant_seconds": 3.611296700011735,
+      "seconds": 20.784037000001263
+    },
+    "gguf:Q8_0": {
+      "numel": 1100048384,
+      "tensor_data_bytes": 1169072128,
+      "file_bytes": 1169809696,
+      "weighted_cosine": 0.9999849532566729,
+      "weighted_rel_error": 0.005481738189895799,
+      "min_cosine": 0.999959852833759,
+      "max_rel_error": 0.008961291486318716,
+      "tensor_types": {
+        "Q8_0": 156,
+        "F32": 45
+      },
+      "fp32_bytes": 4400193536,
+      "ratio_vs_fp32": 3.7614609889504624,
+      "ratio_vs_bf16_gguf": 1.8815185611181666,
+      "bits_per_param": 8.507332681105051,
+      "seconds": 32.83227049999914,
+      "reproduce": [
+        "python convert_hf_to_gguf.py C:\\Users\\abeli\\.cache\\huggingface\\hub\\models--TinyLlama--TinyLlama-1.1B-Chat-v1.0\\snapshots\\fe8a4ea1ffedaf415f4da2f062534de366a451e6 --outtype bf16 --outfile C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf",
+        "llama-quantize C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-Q8_0.gguf Q8_0"
+      ]
+    },
+    "gguf:Q4_K_M": {
+      "numel": 1100048384,
+      "tensor_data_bytes": 667078656,
+      "file_bytes": 667816224,
+      "weighted_cosine": 0.997805248780102,
+      "weighted_rel_error": 0.06308090606115087,
+      "min_cosine": 0.9952832209989113,
+      "max_rel_error": 0.09719345841119699,
+      "tensor_types": {
+        "Q6_K": 21,
+        "F32": 45,
+        "Q4_K": 135
+      },
+      "fp32_bytes": 4400193536,
+      "ratio_vs_fp32": 6.58892877690854,
+      "ratio_vs_bf16_gguf": 3.2958448400918154,
+      "bits_per_param": 4.856631644304111,
+      "seconds": 34.70302450000236,
+      "reproduce": [
+        "python convert_hf_to_gguf.py C:\\Users\\abeli\\.cache\\huggingface\\hub\\models--TinyLlama--TinyLlama-1.1B-Chat-v1.0\\snapshots\\fe8a4ea1ffedaf415f4da2f062534de366a451e6 --outtype bf16 --outfile C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf",
+        "llama-quantize C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-BF16.gguf C:\\Users\\abeli\\AppData\\Local\\Temp\\claude\\C--PourAlbo-Apourvoir\\bfe0d8d7-cf73-4d43-b56f-473475e6d71e\\scratchpad\\gguf_work\\TinyLlama__TinyLlama-1.1B-Chat-v1.0-Q4_K_M.gguf Q4_K_M"
+      ]
+    }
+  },
+  "not_measured": {
+    "awq": "paquet autoawq non installé (AutoAWQ requiert un GPU CUDA)"
+  },
+  "llama_cpp_version": "9873 (a4107133a)",
+  "model_level": {
+    "hf": {
+      "reference": "transformers FP32",
+      "ctx": 512,
+      "chunks": 20,
+      "methods": {
+        "canonical8": {
+          "perplexity": 11.483879944407654,
+          "quant_dequant_seconds": 30.52519519999987
+        },
+        "canonical4": {
+          "perplexity": 12.869576451028925,
+          "quant_dequant_seconds": 28.691553900000144
+        },
+        "int8_per_row": {
+          "perplexity": 11.508760029986943,
+          "quant_dequant_seconds": 5.857012800002849
+        },
+        "q8_0_ref": {
+          "perplexity": 11.48823263604661,
+          "quant_dequant_seconds": 6.0942909000004875
+        },
+        "q4_0_ref": {
+          "perplexity": 12.06329783062621,
+          "quant_dequant_seconds": 10.234392900001694
+        }
+      },
+      "fp32_perplexity": 11.492012609626268,
+      "fp32_ppl_seconds": 132.6383902000016,
+      "fp32_tokens_per_second": 3.6204861998439517
+    },
+    "gguf": {
+      "reference": "llama.cpp GGUF BF16",
+      "methods": {
+        "BF16": {
+          "perplexity": 9.2915,
+          "prompt_tokens_per_second": 1344.172427,
+          "gen_tokens_per_second": 116.094793
+        },
+        "Q8_0": {
+          "perplexity": 9.2948,
+          "prompt_tokens_per_second": 1772.076429,
+          "gen_tokens_per_second": 145.483225
+        },
+        "Q4_K_M": {
+          "perplexity": 9.6241,
+          "prompt_tokens_per_second": 2278.936737,
+          "gen_tokens_per_second": 220.374654
+        }
+      }
+    }
+  }
+}

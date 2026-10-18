@@ -10,7 +10,7 @@ Key features:
 - Phonetic encoding for sound and pronunciation
 - Syntax encoding for string structure
 - Torus topology for periodic relationships
-- Thales' theorem validation
+- Right-angle checks between vectors (exploratory; no semantic property demonstrated)
 - Concentric layers for granularity
 
 Example:
@@ -31,7 +31,7 @@ import numpy as np
 
 from ..phonetic import PhoneticEncoder
 from ..syntax import SyntaxTreeBuilder, SyntaxEncoder, SyntaxTree
-from ..semantic import CanonicalProjector, CanonicalConfig
+from ..semantic import CanonicalProjector, CanonicalConfig, SemanticEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +42,9 @@ class BabelConfig:
     # Dimension configuration
     phonetic_dim: int = 64
     syntax_dim: int = 64
-    semantic_dim: int = 3  # Canonical 3D space
-    output_dim: int = 128  # Final combined dimension
+    semantic_dim: int = 3  # Canonical 3D space (projection of the real embedding)
+    semantic_model: Optional[str] = None  # sentence-transformers model (None = default)
+    output_dim: int = 128  # Unused (kept for config compatibility); combined dim = P + S + semantic model dim
     
     # Weighting for dimensions
     p_weight: float = 1.0  # Phonetic weight
@@ -119,6 +120,8 @@ class BabelSpace:
             )
         )
         
+        self._semantic_embedder: Optional[SemanticEmbedder] = None
+
         # Reference cache
         self._reference_cache: Dict[str, Dict[str, torch.Tensor]] = {}
         
@@ -165,86 +168,50 @@ class BabelSpace:
         tree = self.syntax_builder.build_tree(text)
         return self.syntax_encoder.encode_tree(tree)
     
+    @property
+    def semantic_embedder(self) -> SemanticEmbedder:
+        """Real sentence-transformers embedder (loaded lazily, cached locally by HuggingFace)."""
+        if self._semantic_embedder is None:
+            self._semantic_embedder = SemanticEmbedder(self.config.semantic_model)
+        return self._semantic_embedder
+
+    def semantic_embedding(self, text: str) -> torch.Tensor:
+        """Full-dimensional semantic embedding of the text (L2-normalised)."""
+        return self.semantic_embedder.encode(text)
+
+    def _ensure_canonical_basis(self) -> None:
+        if getattr(self.canonical_projector, "basis", None) is None:
+            self.canonical_projector.fit_axes_from_embedder(self.semantic_embedder)
+
     def _encode_semantic(self, text: str, lang: str) -> torch.Tensor:
-        """Encode using only semantic dimension."""
-        # For now, use a simple embedding
-        # In production, use a real embedding model
-        word = text.split()[0] if text else ""
-        
-        # Create a simple embedding based on word
-        # This will be replaced with actual embeddings
-        word_hash = hash(word) % 1000
-        embedding = torch.tensor([
-            float(word_hash % 100) / 50.0 - 1.0,
-            float((word_hash // 100) % 100) / 50.0 - 1.0,
-            float((word_hash // 10000) % 100) / 50.0 - 1.0,
-        ])
-        
-        # Project to canonical space
-        return self.canonical_projector.project_to_canonical(embedding)
-    
+        """
+        Semantic dimension: real embedding projected onto the 3D canonical basis
+        spanned by the embeddings of the reference words (pou / voir / savoir).
+        The 3D projection keeps only part of the information; similarity
+        should be computed with :meth:`semantic_embedding`.
+        """
+        self._ensure_canonical_basis()
+        return self.canonical_projector.project_to_canonical(self.semantic_embedding(text), method="linear")
+
     def _encode_combined(self, text: str, lang: str) -> torch.Tensor:
-        """Encode using all three dimensions."""
-        # Get individual embeddings
-        P = self._encode_phonetic(text, lang) * self.config.p_weight
-        S = self._encode_syntax(text, lang) * self.config.s_weight
-        M = self._encode_semantic(text, lang) * self.config.m_weight
-        
-        # Combine dimensions
-        # P and S need to be projected to match M's dimension
-        combined = self._fuse_dimensions(P, S, M)
-        
-        # Normalize
+        """
+        Concatenate the three normalised, weighted views: [P | S | M].
+        M is the full semantic embedding (not its 3D projection).
+        """
+        P = self._encode_phonetic(text, lang)
+        S = self._encode_syntax(text, lang)
+        M = self.semantic_embedding(text)
+
+        parts = []
+        for vec, weight in ((P, self.config.p_weight), (S, self.config.s_weight), (M, self.config.m_weight)):
+            norm = torch.norm(vec)
+            parts.append(vec / norm * weight if norm > 0 else vec)
+        combined = torch.cat(parts)
+
         if torch.norm(combined) > 0:
             combined = combined / torch.norm(combined)
-        
+
         return combined
-    
-    def _fuse_dimensions(
-        self,
-        P: torch.Tensor,
-        S: torch.Tensor,
-        M: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Fuse the three dimensions into a single embedding.
-        
-        Strategy:
-        - M is already in canonical 3D space
-        - P and S are projected to 3D and combined
-        - Final output is in the canonical space
-        """
-        # Project P and S to 3D
-        P_3d = self._project_to_3d(P, "P")
-        S_3d = self._project_to_3d(S, "S")
-        
-        # Combine all in canonical space
-        combined = P_3d + S_3d + M
-        
-        return combined
-    
-    def _project_to_3d(self, embedding: torch.Tensor, dimension: str) -> torch.Tensor:
-        """
-        Project a high-dimensional embedding to 3D canonical space.
-        
-        Args:
-            embedding: Input embedding
-            dimension: Which dimension ('P' or 'S')
-        
-        Returns:
-            torch.Tensor: 3D projection
-        """
-        # Simple dimensionality reduction
-        if embedding.numel() >= 3:
-            v = embedding[:3]
-        else:
-            v = torch.cat([embedding, torch.zeros(3 - embedding.numel())])
-        
-        # Normalize
-        v = v / torch.norm(v)
-        
-        # Project onto torus
-        return self.canonical_projector._project_to_torus(v)
     
     def quantize(
         self,
@@ -262,15 +229,23 @@ class BabelSpace:
             Tuple of (quantized_angles, quantized_vector)
         """
         n_bits = n_bits or self.config.n_bits
-        
-        # Project to canonical 3D
-        canonical = self.canonical_projector.project_to_canonical(embedding)
-        
-        # Quantize
-        theta_q, phi_q = self.canonical_projector.quantize_angles(
-            *self.canonical_projector.get_angles(canonical),
-            n_bits
-        )
+
+        # Accept a 3D vector, a semantic embedding, or a combined [P | S | M] vector
+        # (in which case only its M part is projected).
+        if embedding.shape[-1] != 3:
+            self._ensure_canonical_basis()
+            sem_dim = self.canonical_projector.basis.shape[1]
+            if embedding.shape[-1] != sem_dim:
+                embedding = embedding[..., -sem_dim:]
+
+        # Project to canonical 3D. Two angles keep only the direction of the
+        # 3D projection: this is a lossy code, not a reversible compression.
+        # The angles are those of the 3D coordinates; the canonical point is the
+        # torus point with these (theta, phi), so dequantize() reconstructs it.
+        coords = self.canonical_projector.project_to_canonical(embedding, method="linear")
+        theta, phi = self.canonical_projector.get_angles(coords)
+        canonical = self.canonical_projector._project_to_torus(coords)
+        theta_q, phi_q = self.canonical_projector.quantize_angles(theta, phi, n_bits)
         
         return (theta_q, phi_q), canonical
     
@@ -323,7 +298,7 @@ class BabelSpace:
         lang: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Get canonical relationship between three texts using Thales' theorem.
+        Get canonical relationship between three texts via a right-angle check.
         
         Args:
             text1: First text

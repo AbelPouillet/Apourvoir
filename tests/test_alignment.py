@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for the alignment module.
 
 This module tests the core alignment functionality including:
@@ -10,8 +10,8 @@ This module tests the core alignment functionality including:
 
 import numpy as np
 import pytest
-from apourvoir.core import SavoirVector, PouvoirMatrix, SavoirSpace, AlignmentEngine
-from apourvoir.core import create_alignment_tensor, calculate_alignment_gradient
+from src.core import SavoirVector, PouvoirMatrix, SavoirSpace, AlignmentEngine
+from src.core import create_alignment_tensor, calculate_alignment_gradient
 
 
 class TestSavoirVector:
@@ -431,7 +431,7 @@ class TestAlignmentEngine:
         justice = engine.justice_score(pouvoir_matrices)
         
         # Perfect equality should give justice score of 1.0
-        assert justice == 1.0
+        assert justice == pytest.approx(1.0)
     
     def test_justice_score_inequality(self):
         """Test justice score with unequal power matrices."""
@@ -499,12 +499,11 @@ class TestAlignmentFunctions:
         assert gradient.shape == (2, 2)
         
         # For this simple case, we can verify some properties
-        # The gradient should be related to the error vector [0-1, 1-0] = [-1, 1]
-        # and the input vector [1, 0]
-        # So gradient[0,0] = 2 * (-1) * 1 = -2
-        # And gradient[1,0] = 2 * (1) * 1 = 2
-        assert gradient[0, 0] == -2.0
-        assert gradient[1, 0] == 2.0
+        # E = ||P s - t||^2  =>  dE/dP = 2 (P s - t) s^T
+        # P s - t = [1, 0] - [0, 1] = [1, -1] and s = [1, 0]
+        # So gradient[0,0] = 2 * 1 * 1 = 2 and gradient[1,0] = 2 * (-1) * 1 = -2
+        assert gradient[0, 0] == 2.0
+        assert gradient[1, 0] == -2.0
 
 
 if __name__ == "__main__":

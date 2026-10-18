@@ -49,8 +49,8 @@ class SyntaxEncoder:
     Encodes syntax trees into vector embeddings.
     
     The encoder uses:
-    - Token embeddings (from a vocabulary)
-    - POS tag embeddings
+    - Token embeddings (letter frequencies of the token: orthographic, deterministic)
+    - POS tag embeddings (one-hot)
     - Depth embeddings (for hierarchy)
     - Position embeddings (for order)
     
@@ -85,28 +85,24 @@ class SyntaxEncoder:
         
         logger.info(f"SyntaxEncoder initialized: dim={self.config.embedding_dim}")
     
+    # Deterministic orthographic layout: letter frequencies occupy the first
+    # dimensions, POS tags get one-hot dimensions right after.
+    ALPHABET = "abcdefghijklmnopqrstuvwxyzàâäçéèêëîïôöùûüœæñß"
+    POS_TAGS = ['noun', 'verb', 'adj', 'adv', 'prep', 'conj', 'pron', 'word', 'char', 'morpheme', 'phrase', 'sentence']
+
     def _init_vocabulary(self) -> None:
-        """Initialize token vocabulary with random embeddings."""
-        # Common tokens for our domain
-        domain_tokens = [
-            "pouvoir", "voir", "savoir", "lumière", "connaissance", 
-            "espace", "canonique", "géométrique", "sémantique", "token",
-            "mot", "définition", "processus", "étape", "concept", "notion",
-            "referentiel", "coordonnée", "angle", "vecteur", "dimension",
-            "compression", "quantisation", "modèle", "moe", "mistral",
-        ]
-        
-        for token in domain_tokens:
-            self.token_embeddings[token] = torch.randn(self.config.embedding_dim)
-            self.token_embeddings[token] = self.token_embeddings[token] / torch.norm(self.token_embeddings[token])
-    
+        """Token embeddings are computed on demand from the token's letters (no vocabulary needed)."""
+        needed = len(self.ALPHABET) + len(self.POS_TAGS)
+        if self.config.embedding_dim < needed:
+            raise ValueError(f"embedding_dim must be >= {needed}, got {self.config.embedding_dim}")
+
     def _init_pos_embeddings(self) -> None:
-        """Initialize POS tag embeddings."""
-        pos_tags = ['noun', 'verb', 'adj', 'adv', 'prep', 'conj', 'pron', 'word', 'char', 'morpheme', 'phrase', 'sentence']
-        
-        for pos in pos_tags:
-            self.pos_embeddings[pos] = torch.randn(self.config.embedding_dim)
-            self.pos_embeddings[pos] = self.pos_embeddings[pos] / torch.norm(self.pos_embeddings[pos])
+        """POS tag embeddings: one-hot dimensions after the alphabet block."""
+        offset = len(self.ALPHABET)
+        for i, pos in enumerate(self.POS_TAGS):
+            emb = torch.zeros(self.config.embedding_dim)
+            emb[offset + i] = 1.0
+            self.pos_embeddings[pos] = emb
     
     def _init_depth_embeddings(self) -> None:
         """Initialize depth embeddings."""
@@ -140,16 +136,20 @@ class SyntaxEncoder:
     
     def _get_token_embedding(self, token: str) -> torch.Tensor:
         """Get embedding for a token."""
+        """Normalised letter-frequency vector of the token (deterministic, orthographic)."""
         token_lower = token.lower()
         if token_lower in self.token_embeddings:
             return self.token_embeddings[token_lower]
-        
-        # For unknown tokens, use hash-based embedding
-        hash_val = hash(token_lower) % 10000
-        unknown_emb = torch.randn(self.config.embedding_dim)
-        unknown_emb = unknown_emb / torch.norm(unknown_emb)
-        self.token_embeddings[token_lower] = unknown_emb
-        return unknown_emb
+
+        emb = torch.zeros(self.config.embedding_dim)
+        for char in token_lower:
+            idx = self.ALPHABET.find(char)
+            if idx >= 0:
+                emb[idx] += 1.0
+        if torch.norm(emb) > 0:
+            emb = emb / torch.norm(emb)
+        self.token_embeddings[token_lower] = emb
+        return emb
     
     def _get_pos_embedding(self, pos: Optional[str]) -> torch.Tensor:
         """Get embedding for a POS tag."""

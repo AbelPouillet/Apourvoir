@@ -1,4 +1,4 @@
-"""
+﻿"""
 Tests for the quantization module.
 
 This module tests the quantization functionality including:
@@ -11,8 +11,8 @@ This module tests the quantization functionality including:
 
 import numpy as np
 import pytest
-from apourvoir.core import SavoirVector, PouvoirMatrix, SavoirSpace
-from apourvoir.utils import (
+from src.core import SavoirVector, PouvoirMatrix, SavoirSpace, AlignmentEngine
+from src.utils import (
     UniformQuantizer,
     AdaptiveQuantizer,
     MatrixQuantizer,
@@ -422,7 +422,8 @@ class TestIntegration:
         )
         
         # Quantized score should be close to original
-        assert quantized_score < original_score * 2  # Allow some degradation
+        # Allow some degradation; absolute tolerance because the optimum can be exact (score ~ 0)
+        assert quantized_score < original_score * 2 + 1e-3
     
     def test_quantization_dequantization_roundtrip(self):
         """Test that quantization and dequantization preserve alignment."""

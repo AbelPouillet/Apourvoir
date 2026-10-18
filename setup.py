@@ -42,6 +42,10 @@ setup(
     packages=find_packages(where="."),
     python_requires=">=3.8",
     install_requires=[
+        "torch>=2.1.0",
+        "safetensors>=0.4.0",
+        "huggingface_hub>=0.20.0",
+        "sentence-transformers>=3.0.0",
         "numpy>=1.21.0",
         "scipy>=1.7.0",
         "scikit-learn>=1.0.0",

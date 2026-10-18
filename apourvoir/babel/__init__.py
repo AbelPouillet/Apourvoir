@@ -10,7 +10,7 @@ This module enables:
 - Compression of embeddings via 3D canonical projection
 - Multilingual support through phonetic encoding
 - Syntax-aware semantic relationships
-- Thales' theorem validation for geometric consistency
+- Right-angle checks between vectors (exploratory; no semantic property demonstrated)
 """
 
 from .phonetic import PhoneticEncoder, PHONEME_MAP, PHONEME_WEIGHTS

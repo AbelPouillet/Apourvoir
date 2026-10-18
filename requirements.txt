@@ -2,6 +2,9 @@
 # Quantisation canonique des modèles MoE avec SDK d'optimisation
 
 # Core dependencies
+safetensors>=0.4.0
+huggingface_hub>=0.20.0
+sentence-transformers>=3.0.0  # embeddings sémantiques réels (Babel M)
 torch>=2.1.0
 transformers>=4.37.0
 accelerate>=0.27.0
@@ -23,8 +26,12 @@ matplotlib>=3.7.0
 seaborn>=0.12.0
 
 # Utilities
- tqdm>=4.65.0
- sentencepiece>=0.1.99
+tqdm>=4.65.0
+sentencepiece>=0.1.99
+pytest>=7.0.0
+
+# Baselines GGUF (scripts/compare_baselines.py) : binaires llama.cpp + paquet gguf
+gguf>=0.10.0
 
 # For kernel fusion and optimization
 numba>=0.57.0

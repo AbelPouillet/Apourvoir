@@ -10,7 +10,7 @@ Key concepts:
 
 The canonical space uses:
 - Torus topology (R=2.0, r=1.0) for periodic semantic relationships
-- Thales' theorem for validating canonical relationships
+- Right-angle checks between reference vectors (exploratory, not validated)
 - Concentric layers for granular knowledge organization
 
 Example:
@@ -48,7 +48,7 @@ class CanonicalConfig:
     ref_savoir: str = "savoir"  # Reference for semantic validation
     ref_lumiere: str = "lumiere"  # Reference for z=1 (perfect power)
     
-    # Thales' theorem validation
+    # Right-angle check
     thales_tolerance: float = 0.01  # Tolerance for right angle validation
     
     # Layer definitions (concentric)
@@ -120,6 +120,53 @@ class CanonicalProjector:
         self.ref_vectors[token] = vector
         logger.info(f"Set reference vector for '{token}': {vector.tolist()}")
     
+    def set_axes(self, x_axis: torch.Tensor, y_axis: torch.Tensor, z_axis: torch.Tensor) -> None:
+        """
+        Define the 3D canonical subspace inside a high-dimensional embedding space.
+
+        The three vectors (e.g. the real embeddings of "pou", "voir", "savoir")
+        are orthonormalised with Gram-Schmidt. Projecting an embedding then
+        returns its 3 coordinates in that basis. This keeps only the component
+        of the embedding lying in that 3D subspace: it is a lossy projection.
+        """
+        basis = []
+        for axis in (x_axis, y_axis, z_axis):
+            v = axis.float().clone()
+            for b in basis:
+                v = v - torch.dot(v, b) * b
+            norm = torch.norm(v)
+            if norm < 1e-8:
+                raise ValueError("Axes are linearly dependent; cannot build a 3D basis")
+            basis.append(v / norm)
+        self.basis = torch.stack(basis)  # [3, D]
+
+    def fit_axes_from_embedder(self, embedder) -> None:
+        """Build the canonical basis from the real embeddings of the reference words."""
+        refs = [self.config.ref_pou, self.config.ref_voir, self.config.ref_savoir]
+        x, y, z = embedder.encode(refs)
+        self.set_axes(x, y, z)
+
+    def to_canonical_coordinates(self, embedding: torch.Tensor) -> torch.Tensor:
+        """
+        Coordinates (..., 3) of an embedding in the canonical basis.
+
+        3D inputs are returned unchanged. Higher-dimensional inputs require a
+        basis set with :meth:`set_axes` / :meth:`fit_axes_from_embedder`;
+        no silent truncation to the first 3 components is performed.
+        """
+        embedding = embedding.float()
+        if embedding.shape[-1] == 3:
+            return embedding
+        basis = getattr(self, "basis", None)
+        if basis is None:
+            raise ValueError(
+                f"Embedding of dimension {embedding.shape[-1]} needs a canonical basis: "
+                "call set_axes() or fit_axes_from_embedder() first"
+            )
+        if basis.shape[1] != embedding.shape[-1]:
+            raise ValueError(f"Basis dimension {basis.shape[1]} != embedding dimension {embedding.shape[-1]}")
+        return embedding @ basis.T
+
     def project_to_canonical(
         self,
         embedding: torch.Tensor,
@@ -127,131 +174,46 @@ class CanonicalProjector:
     ) -> torch.Tensor:
         """
         Project an embedding onto the canonical 3D space.
-        
+
         Args:
-            embedding: Input embedding (any dimension)
-            method: Projection method ('spherical', 'linear', 'torus')
-        
+            embedding: Input embedding (..., D). D == 3 or D == basis dimension.
+            method: 'linear' returns the 3D coordinates in the canonical basis;
+                'spherical' / 'torus' additionally map the direction onto the
+                torus surface (the norm is discarded).
+
         Returns:
-            torch.Tensor: 3D canonical embedding
+            torch.Tensor: 3D canonical embedding (..., 3)
         """
-        if method == "spherical":
-            return self._project_spherical(embedding)
-        elif method == "linear":
-            return self._project_linear(embedding)
-        elif method == "torus":
-            return self._project_torus(embedding)
-        else:
+        if method not in ("spherical", "linear", "torus"):
             raise ValueError(f"Unknown projection method: {method}")
-    
-    def _project_spherical(self, embedding: torch.Tensor) -> torch.Tensor:
-        """
-        Project using spherical coordinates.
-        
-        This preserves the angular relationships in the original space
-        by extracting the principal angles.
-        """
-        # Reduce to 3D using PCA-like approach
-        if embedding.dim() == 1:
-            # For 1D, just take first 3 components or pad
-            if embedding.numel() >= 3:
-                v = embedding[:3]
-            else:
-                v = torch.cat([embedding, torch.zeros(3 - embedding.numel())])
-        else:
-            # For multi-dimensional, use mean along last dimension
-            v = torch.mean(embedding, dim=-1)
-            if v.numel() >= 3:
-                v = v[:3]
-            else:
-                v = torch.cat([v, torch.zeros(3 - v.numel())])
-        
-        # Normalize
-        v = v / torch.norm(v)
-        
-        # Project onto torus
-        return self._project_to_torus(v)
-    
-    def _project_linear(self, embedding: torch.Tensor) -> torch.Tensor:
-        """
-        Linear projection preserving semantic axes.
-        
-        Uses the reference vectors to project onto the canonical axes.
-        """
-        # Get reference vectors
-        x_ref = self.ref_vectors.get(self.config.ref_pou, torch.tensor([1.0, 0.0, 0.0]))
-        y_ref = self.ref_vectors.get(self.config.ref_voir, torch.tensor([0.0, 1.0, 0.0]))
-        z_ref = self.ref_vectors.get(self.config.ref_savoir, torch.tensor([0.0, 0.0, 1.0]))
-        
-        # Reduce embedding to 3D
-        if embedding.dim() == 1:
-            if embedding.numel() >= 3:
-                v = embedding[:3]
-            else:
-                v = torch.cat([embedding, torch.zeros(3 - embedding.numel())])
-        else:
-            v = torch.mean(embedding, dim=-1)
-            if v.numel() >= 3:
-                v = v[:3]
-            else:
-                v = torch.cat([v, torch.zeros(3 - v.numel())])
-        
-        v = v / torch.norm(v)
-        
-        # Project onto canonical axes
-        x_proj = torch.dot(v, x_ref) * x_ref
-        y_proj = torch.dot(v, y_ref) * y_ref
-        z_proj = torch.dot(v, z_ref) * z_ref
-        
-        # Combine
-        canonical = x_proj + y_proj + z_proj
-        
-        # Project onto torus
-        return self._project_to_torus(canonical)
-    
-    def _project_torus(self, embedding: torch.Tensor) -> torch.Tensor:
-        """Direct torus projection."""
-        # Reduce to 3D
-        if embedding.dim() == 1:
-            if embedding.numel() >= 3:
-                v = embedding[:3]
-            else:
-                v = torch.cat([embedding, torch.zeros(3 - embedding.numel())])
-        else:
-            v = torch.mean(embedding, dim=-1)
-            if v.numel() >= 3:
-                v = v[:3]
-            else:
-                v = torch.cat([v, torch.zeros(3 - v.numel())])
-        
-        v = v / torch.norm(v)
-        return self._project_to_torus(v)
-    
+        coords = self.to_canonical_coordinates(embedding)
+        if method == "linear":
+            return coords
+        return self._project_to_torus(coords)
+
     def _project_to_torus(self, v: torch.Tensor) -> torch.Tensor:
         """
-        Project a 3D vector onto the torus.
-        
+        Project 3D vectors (..., 3) onto the torus.
+
         Parametric equations:
         X = (R + r * cos(phi)) * cos(theta)
         Y = (R + r * cos(phi)) * sin(theta)
         Z = r * sin(phi)
         """
-        # Get spherical coordinates
-        r, theta, phi = self._cartesian_to_spherical(v)
-        
-        # Project onto torus
+        _, theta, phi = self._cartesian_to_spherical(v)
+
         X = (self.config.R + self.config.r * torch.cos(phi)) * torch.cos(theta)
         Y = (self.config.R + self.config.r * torch.cos(phi)) * torch.sin(theta)
         Z = self.config.r * torch.sin(phi)
-        
-        return torch.tensor([X.item(), Y.item(), Z.item()])
-    
+
+        return torch.stack([X, Y, Z], dim=-1)
+
     def _cartesian_to_spherical(self, v: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Convert cartesian to spherical coordinates."""
-        r = torch.norm(v)
-        theta = torch.atan2(v[1], v[0])  # [-\u03c0, \u03c0]
+        """Convert cartesian (..., 3) to spherical coordinates."""
+        r = torch.norm(v, dim=-1)
+        theta = torch.atan2(v[..., 1], v[..., 0])  # [-\u03c0, \u03c0]
         theta = (theta + 2 * math.pi) % (2 * math.pi)  # Normalize to [0, 2\u03c0]
-        phi = torch.acos(torch.clamp(v[2] / (r + 1e-10), -1.0, 1.0))  # [0, \u03c0]
+        phi = torch.acos(torch.clamp(v[..., 2] / (r + 1e-10), -1.0, 1.0))  # [0, \u03c0]
         return r, theta, phi
     
     def get_angles(self, v: torch.Tensor) -> Tuple[float, float]:
@@ -381,7 +343,7 @@ class CanonicalProjector:
         v3: torch.Tensor
     ) -> bool:
         """
-        Validate Thales' theorem for three vectors.
+        Check whether the angle at the middle vectors is a right angle (Thales configuration).
         
         Checks if the angle at v2 is a right angle (90 degrees).
         
@@ -421,7 +383,7 @@ class CanonicalProjector:
         token3: str
     ) -> Dict[str, Any]:
         """
-        Get the canonical relationship between three tokens using Thales' theorem.
+        Get the canonical relationship between three tokens via a right-angle check.
         
         Args:
             token1: First token

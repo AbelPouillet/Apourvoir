@@ -197,8 +197,11 @@ def validate_reconstruction(babel: BabelSpace, texts: List[str], lang: str = "fr
         reconstructed = babel.dequantize(theta_q, phi_q)
         
         # Calculate errors
-        cosine_error = metrics.reconstruction_error(original, reconstructed, "cosine")
-        euclidean_error = metrics.reconstruction_error(original, reconstructed, "euclidean")
+        # Two angles only encode the direction of the 3D canonical point: the full
+        # embedding cannot be reconstructed from them. The error below therefore
+        # measures angular quantization of the canonical 3D point only.
+        cosine_error = metrics.reconstruction_error(canonical, reconstructed, "cosine")
+        euclidean_error = metrics.reconstruction_error(canonical, reconstructed, "euclidean")
         
         text_result = {
             "text": text,
@@ -209,7 +212,7 @@ def validate_reconstruction(babel: BabelSpace, texts: List[str], lang: str = "fr
         }
         results["texts"].append(text_result)
         
-        originals.append(original)
+        originals.append(canonical)
         reconstructions.append(reconstructed)
         
         logger.info(f"  {text}: cosine_error={cosine_error:.6f}, euclidean_error={euclidean_error:.6f}")
