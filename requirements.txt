@@ -8,6 +8,7 @@ sentence-transformers>=3.0.0  # embeddings sémantiques réels (Babel M)
 torch>=2.1.0
 transformers>=4.37.0
 accelerate>=0.27.0
+safetensors>=0.4.1
 numpy>=1.24.0
 scipy>=1.10.0
 
