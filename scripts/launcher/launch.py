@@ -78,9 +78,19 @@ def parse_args():
         '--quant-method',
         type=str,
         default='canonical',
-        choices=['canonical', 'bitsandbytes', 'gguf', 'awq'],
-        help='Quantization method (default: canonical)'
+        choices=['canonical', 'none', 'bitsandbytes', 'gguf', 'awq'],
+        help='Quantization method (default: canonical). The inference engine supports canonical and none'
     )
+    
+    # Inference engine
+    parser.add_argument('--no-inference', action='store_true',
+                        help='Do not load a model (completions answer 501)')
+    parser.add_argument('--device', type=str, default=None, choices=['cpu', 'cuda'],
+                        help='Inference device (default: cuda if available, else cpu)')
+    parser.add_argument('--dtype', type=str, default=None, choices=['float32', 'float16', 'bfloat16'],
+                        help='Weights dtype (default: float16 on cuda, float32 on cpu)')
+    parser.add_argument('--n-bits', type=int, default=None,
+                        help='Bits for canonical quantization (default: from the hardware tier configuration)')
     
     # Optimization preset
     parser.add_argument(
@@ -252,7 +262,11 @@ def main():
         api_port=args.api_port,
         enable_ui=not args.no_ui,
         ui_port=args.ui_port,
-        log_level=args.log_level
+        log_level=args.log_level,
+        enable_inference=not args.no_inference,
+        device=args.device,
+        dtype=args.dtype,
+        n_bits=args.n_bits,
     )
     
     # Create launcher

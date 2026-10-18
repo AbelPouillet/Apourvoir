@@ -68,6 +68,12 @@ class LaunchOptions:
     # Model directory
     model_dir: str = "models"
 
+    # Inference engine (transformers backend)
+    enable_inference: bool = True
+    device: Optional[str] = None   # None = cuda if available, else cpu
+    dtype: Optional[str] = None    # None = float16 on cuda, float32 on cpu
+    n_bits: Optional[int] = None   # None = value from the tier configuration
+
 
 @dataclass
 class PerformanceMetrics:
@@ -151,6 +157,9 @@ class OptimizedLauncher:
 
         # HTTP servers started by launch()
         self.servers: List[BackgroundServer] = []
+
+        # Inference engine (created by launch())
+        self.engine = None
 
         # Initialize
         self._initialize()
@@ -441,36 +450,30 @@ class OptimizedLauncher:
     
     def _launch_inference(self) -> None:
         """Launch the inference engine."""
-        logger.info("Launching inference engine...")
-        
-        # This would integrate with the existing Apourvoir inference code
-        # For now, we'll just log the action
-        
-        # Import and configure the quantization
-        try:
-            from apourvoir.quantization import canonical as canonical_quant
-            from apourvoir.babel import BabelSpace, BabelConfig
-            
-            # Create Babel space with optimized config
-            babel_config = BabelConfig(
-                n_bits=self.config.quantization.n_bits,
-                phonetic_dim=64,
-                syntax_dim=64,
-                semantic_dim=3,
-                output_dim=128
-            )
-            babel = BabelSpace(babel_config)
-            
-            logger.info(f"Babel space initialized with {self.config.quantization.n_bits}-bit quantization")
-            
-        except ImportError as e:
-            logger.warning(f"Could not import Apourvoir modules: {e}")
+        if not self.options.enable_api:
+            return  # nothing would serve completions
+        if not self.options.enable_inference:
+            logger.info("Inference engine disabled: /v1/completions will answer 501")
+            return
+        from apourvoir.inference import InferenceEngine
+
+        n_bits = self.options.n_bits or self.config.quantization.n_bits
+        logger.info(f"Launching inference engine: {self.options.model} "
+                    f"(quant={self.options.quant_method}, n_bits={n_bits})")
+        self.engine = InferenceEngine(
+            self.options.model,
+            quant_method=self.options.quant_method,
+            n_bits=n_bits,
+            device=self.options.device,
+            dtype=self.options.dtype,
+        )
+        self.engine.load()
     
     def _launch_api_server(self) -> None:
         """Launch the API server."""
         logger.info(f"Launching API server on {self.options.api_host}:{self.options.api_port}")
         server = BackgroundServer("API server", APIHandler, self.options.api_host, self.options.api_port,
-                                  self.get_status, model_name=self.options.model)
+                                  self.get_status, model_name=self.options.model, engine=self.engine)
         server.start()
         self.servers.append(server)
 
@@ -509,6 +512,7 @@ class OptimizedLauncher:
             "running": self._running,
             "tier": self.profile.tier.name if self.profile and self.profile.tier else "unknown",
             "config": self.config.to_dict() if self.config else {},
+            "inference": self.engine.stats() if self.engine else None,
             "metrics": [m.to_dict() for m in self.metrics[-10:]]  # Last 10 metrics
         }
     

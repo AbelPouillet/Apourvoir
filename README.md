@@ -143,6 +143,19 @@ python -m pytest -q
 
 Pour les baselines GGUF : installer les binaires llama.cpp (`llama-quantize`, `llama-perplexity` et `llama-bench` dans le PATH), et cloner le dépôt llama.cpp **à la même version** (ce clone fournit `convert_hf_to_gguf.py` et `gguf-py`), puis passer `--llama-cpp-dir`.
 
+## Serveur d'inférence
+
+```bash
+python scripts/launcher/launch.py --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 --quant-method canonical --n-bits 8 --api-host 127.0.0.1
+curl -s localhost:8080/v1/completions -d '{"prompt": "The capital of France is", "max_tokens": 16}'
+curl -s localhost:8080/v1/chat/completions -d '{"messages": [{"role": "user", "content": "Bonjour"}], "max_tokens": 32}'
+```
+
+- `--quant-method canonical` : chaque poids 2‑D passe par la quantisation canonique puis est déquantifié. La génération utilise donc exactement les valeurs quantifiées, et `/status` rapporte le ratio et l'erreur mesurés au chargement. `none` laisse les poids intacts ; `bitsandbytes`, `gguf` et `awq` sont refusés explicitement par le moteur.
+- Paramètres de requête acceptés : `max_tokens` (1 à 4096), `temperature` (0 = glouton, déterministe), `top_p`, `stop`, `seed`. `stream` est refusé (400).
+- Avant le chargement, le moteur vérifie la RAM ou la VRAM disponible (taille des safetensors × dtype) et refuse un modèle trop gros.
+- `--no-inference` démarre le serveur sans modèle : les complétions répondent alors 501.
+
 ## Scripts de mesure
 
 | Script | Rôle |
@@ -166,7 +179,11 @@ Chaque script affiche la commande exécutée et écrit ses résultats détaillé
 - **Couches concentriques** (`CanonicalQuantizer`, couches 1 à 4 avec 8/6/4/4 bits) : simple politique de bits, sans bénéfice mesuré.
 - **Relations « de Thalès »** : `ThalesTriangle` et `validate_thales` mesurent seulement si un angle vaut 90°. **Aucune propriété sémantique n'est démontrée.**
 - **SDK `apourvoir/optimizer`** (tiers matériels, presets, batching adaptatif, parallélisme d'experts) : **[NON MESURÉ]**. `adaptive_batching.py` contient encore une démo avec des valeurs `np.random` ; les tableaux de tiers et presets sont des heuristiques non validées.
-- **Lanceur et API** (`scripts/launcher/launch.py`) : le lanceur démarre un vrai serveur HTTP, avec `/health`, `/status` et `/v1/models` sur `--api-port`, et une page de statut sur `--ui-port`. Il reste actif jusqu'à Ctrl+C. En revanche, **il n'y a pas de moteur d'inférence** : `/v1/completions` et `/v1/chat/completions` répondent `501 Not Implemented`. La compatibilité avec des agents de codage n'a pas été vérifiée.
+- **Lanceur et API** (`scripts/launcher/launch.py`) : `/v1/completions` et `/v1/chat/completions` sont servis par un vrai moteur (`apourvoir/inference`, backend transformers, CPU ou CUDA). Voir « Serveur d'inférence » ci‑dessous. Limites :
+  - pas de streaming, et une seule génération à la fois (verrou) ;
+  - pas de noyau bas‑bit : la RAM et la vitesse sont celles du dtype déquantifié ;
+  - Mixtral ne tient pas sur la machine de mesure, et le launcher le refuse avec un message explicite ;
+  - la compatibilité avec des agents de codage n'a pas été vérifiée.
 - **Documents historiques** (`MAIL_POUR_MISTRAL_AI.md`, `RECETTE_QUANTISATION_MOE_CANONIQUE.md`, `README_APOURVOIR.md`, `results/*.json|png` d'avant octobre 2026) : ils contiennent les anciennes affirmations non mesurées et sont signalés comme tels.
 - `src/` est un module historique indépendant (alignement savoir/pouvoir) ; ses tests passent, mais il n'est pas utilisé par la quantisation.
 
